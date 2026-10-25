@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import {computed, onMounted} from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 
@@ -14,6 +14,13 @@ const handleLogout = async () => {
   await userStore.logout()
   router.push('/')
 }
+
+onMounted(() => {
+  // 如果本地有 token，但 Pinia 里没有用户信息，就重新请求一次
+  if (localStorage.getItem('token') && !userStore.userInfo) {
+    userStore.fetchUserInfo() // 确保你的 store 里有这个方法
+  }
+})
 </script>
 
 <template>
@@ -35,7 +42,7 @@ const handleLogout = async () => {
           <router-link to="/register">注册</router-link>
         </template>
         <span class="divider">|</span>
-        <a>我的订单</a>
+        <span class="nav-item" @click="router.push('/order/list')">我的订单</span>
         <span class="divider">|</span>
         <a>我的京东</a>
         <span class="divider">|</span>

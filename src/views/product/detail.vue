@@ -1,10 +1,24 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import TopNav from '@/components/TopNav.vue'
 import Header from '@/components/Header.vue'
+import { addCartApi } from '@/api/cart'
+import { ElMessage } from 'element-plus'
 import type { UserProductDetailVO } from '@/types/product'
 import { getUserProductDetailApi } from '@/api/product'
+import { useCartStore } from '@/stores/cart'
+import type { UserReviewVO } from '@/types/review'
+import { getProductReviewPageApi } from '@/api/review'
+import { formatSkuSpecs } from '@/utils/specs'
+import { getAddressListApi } from '@/api/address'
+import type { AddressVO } from '@/types/order'
+import type {AddressListVO} from "@/types/address.ts";
+
+const defaultAddress = ref<AddressListVO | null>(null)
+
+
+const cartStore = useCartStore()
 
 const route = useRoute()
 const router = useRouter()
@@ -18,6 +32,87 @@ const selectedSkuId = ref<number | null>(null)
 const quantity = ref(1)
 // 当前展示的主图
 const currentImage = ref('')
+
+// --- 评价相关逻辑 ---
+const activeTab = ref('detail') // 当前选中的 Tab: 'detail' 或 'review'
+const reviewList = ref<UserReviewVO[]>([])
+const reviewTotal = ref(0)
+const reviewPage = ref(1)
+const reviewPageSize = 5
+const reviewLoading = ref(false) // 首次加载状态
+
+//无限滚动相关状态
+const loadingMore = ref(false)   // 加载更多状态
+const hasMore = ref(true)        // 是否还有下一页
+const sentinelRef = ref<HTMLElement | null>(null) // 底部哨兵元素
+let observer: IntersectionObserver | null = null
+
+// 获取评价列表（支持追加）
+const loadReviews = async (isLoadMore = false) => {
+  if (!detail.value) return
+  if (isLoadMore && (!hasMore.value || loadingMore.value)) return
+  if (!isLoadMore && reviewLoading.value) return
+
+  if (isLoadMore) {
+    loadingMore.value = true
+  } else {
+    reviewLoading.value = true
+    reviewPage.value = 1 // 重置页码
+    hasMore.value = true
+  }
+
+  try {
+    const res = await getProductReviewPageApi({
+      productId: detail.value.id,
+      page: reviewPage.value,
+      pageSize: reviewPageSize
+    })
+    if (res.code === 1) {
+      const records = res.data.records || []
+      reviewTotal.value = res.data.total
+
+      // 追加还是替换
+      if (isLoadMore) {
+        reviewList.value.push(...records)
+      } else {
+        reviewList.value = records
+      }
+
+      // 判断是否还有更多
+      if (reviewList.value.length >= reviewTotal.value || records.length < reviewPageSize) {
+        hasMore.value = false
+      } else {
+        reviewPage.value++ // 准备请求下一页
+      }
+    }
+  } finally {
+    reviewLoading.value = false
+    loadingMore.value = false
+  }
+}
+
+// 设置监听器
+const setupObserver = () => {
+  if (observer) observer.disconnect()
+  observer = new IntersectionObserver((entries) => {
+    // 如果哨兵进入可视区域，且当前在评价 Tab，就加载下一页
+    if (entries[0]?.isIntersecting && activeTab.value === 'review') {
+      loadReviews(true)
+    }
+  }, { rootMargin: '100px' }) // 提前 100px 触发，体验更丝滑
+
+  if (sentinelRef.value) {
+    observer.observe(sentinelRef.value)
+  }
+}
+
+// 监听 Tab 切换，切到评价时初始化监听
+watch(activeTab, async (newVal) => {
+  if (newVal === 'review') {
+    await nextTick()
+    setupObserver()
+  }
+})
 
 // 当前选中的 SKU 对象
 const selectedSku = computed(() => {
@@ -34,6 +129,35 @@ const displayPrice = computed(() => {
   return 0
 })
 
+const addToCart = async () => {
+  if (!isLogin.value) {
+    router.push('/login')
+    return
+  }
+  if (!selectedSku.value) {
+    ElMessage.warning('请先选择商品规格')
+    return
+  }
+  if (selectedSku.value.stock < quantity.value) {
+    ElMessage.warning('库存不足')
+    return
+  }
+
+  // 调后端加购接口
+  const res = await addCartApi({
+    skuId: selectedSku.value.id,
+    quantity: quantity.value
+  })
+
+  if (res.code === 1) {
+    ElMessage.success('已成功加入购物车')
+    // 3. 核心联动：立刻刷新全局购物车角标数量！
+    await cartStore.fetchCartCount()
+  } else {
+    ElMessage.error(res.msg)
+  }
+}
+
 // 当前库存
 const currentStock = computed(() => selectedSku.value?.stock ?? 0)
 
@@ -47,24 +171,41 @@ onMounted(async () => {
     return
   }
 
-  const res = await getUserProductDetailApi(id)
-  if (res.code === 1) {
-    detail.value = res.data
-    currentImage.value = res.data.mainImage
-    // 默认选中第一个有库存的 SKU
-    if (res.data.skuList && res.data.skuList.length) {
-      const skuList = res.data.skuList
-      if (skuList && skuList.length) {
+  loading.value = true
+  try {
+    const res = await getUserProductDetailApi(id)
+    if (res.code === 1 && res.data) {
+      detail.value = res.data
+      currentImage.value = res.data.mainImage
+
+      if (res.data.skuList && res.data.skuList.length) {
+        const skuList = res.data.skuList
         const firstInStock = skuList.find(s => s.stock > 0)
         selectedSkuId.value = firstInStock ? firstInStock.id : skuList[0]!.id
       }
+
+      loadReviews(false)
+
+    } else {
+      ElMessage.error(res.msg || '商品不存在或已下架')
+      router.replace('/')
     }
-  } else {
-    alert(res.msg)
+  } catch (error) {
+    ElMessage.error('获取详情失败')
     router.replace('/')
+  } finally {
+    loading.value = false
   }
-  loading.value = false
+  // 如果已登录，获取默认地址
+  if (isLogin.value) {
+    const addressRes = await getAddressListApi()
+    if (addressRes.code === 1 && addressRes.data.length > 0) {
+      const found = addressRes.data.find((a: AddressListVO) => a.isDefault === 1)
+      defaultAddress.value = found || addressRes.data[0] || null
+    }
+  }
 })
+
 // 把 specs JSON 转成可读文本
 const formatSpecs = (specs: string): string => {
   if (!specs) return '默认'
@@ -106,30 +247,23 @@ const requireLogin = (): boolean => {
   }
   return true
 }
-
-const addCart = () => {
-  if (!requireLogin()) return
-  if (!selectedSku.value) {
-    alert('请选择规格')
-    return
-  }
-  if (selectedSku.value.stock < quantity.value) {
-    alert('库存不足')
-    return
-  }
-  // TODO: 调加购接口
-  alert(`已加入购物车：SKU=${selectedSku.value.specs}，数量=${quantity.value}`)
-}
-
 const buyNow = () => {
   if (!requireLogin()) return
   if (!selectedSku.value) {
-    alert('请选择规格')
+    ElMessage.warning('请选择商品规格')
     return
   }
-  // TODO: 跳订单确认
-  alert(`立即购买：SKU=${selectedSku.value.specs}，数量=${quantity.value}`)
+  router.push({
+    path: '/order/confirm',
+    query: {
+      skuId: selectedSku.value.id,
+      quantity: quantity.value
+    }
+  })
 }
+onUnmounted(() => {
+  if (observer) observer.disconnect()
+})
 </script>
 
 <template>
@@ -179,12 +313,79 @@ const buyNow = () => {
         <div class="shop-desc">精选店铺好物，快来逛逛</div>
       </div>
 
-      <!-- 详情 tab -->
+      <!-- 详情 与 评价 Tabs -->
       <div class="detail-tabs">
-        <div class="tab active">商品详情</div>
+        <div
+            class="tab"
+            :class="{ active: activeTab === 'detail' }"
+            @click="activeTab = 'detail'"
+        >商品详情</div>
+        <div
+            class="tab"
+            :class="{ active: activeTab === 'review' }"
+            @click="activeTab = 'review'"
+        >用户评价 ({{ reviewTotal }})</div>
       </div>
-      <div class="detail-content">
+
+      <!-- 商品详情内容 -->
+      <div class="detail-content" v-show="activeTab === 'detail'">
         <div class="detail-text">{{ detail.detail || '暂无详情' }}</div>
+      </div>
+
+      <!-- 用户评价内容 -->
+      <div class="detail-content review-content" v-show="activeTab === 'review'" v-loading="reviewLoading">
+        <div class="review-header">
+          <h3>买家评价 ({{ reviewTotal }})</h3>
+        </div>
+
+        <div class="review-list" v-if="reviewList.length > 0">
+          <div class="review-item" v-for="item in reviewList" :key="item.id">
+            <div class="user-info">
+              <el-avatar :src="item.avatar" :size="32">
+                {{ item.nickname?.charAt(0) }}
+              </el-avatar>
+              <span class="nickname">{{ item.nickname }}</span>
+            </div>
+
+            <div class="rating-wrap">
+              <el-rate
+                  v-model="item.rating"
+                  disabled
+                  :texts="['极差', '失望', '一般', '满意', '惊喜']"
+              />
+            </div>
+
+            <p class="review-text">{{ item.content }}</p>
+
+            <!-- 评价图片预览 -->
+            <div class="review-images" v-if="item.images && item.images.length">
+              <el-image
+                  v-for="(img, index) in item.images"
+                  :key="index"
+                  :src="img"
+                  :preview-src-list="item.images"
+                  fit="cover"
+                  class="review-img"
+              />
+            </div>
+
+            <div class="review-footer">
+              <span class="specs">规格：{{ formatSkuSpecs(item.skuSpecs) }}</span>
+              <span class="time">{{ item.createTime?.replace('T', ' ') }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="empty-review" v-else-if="!reviewLoading">
+          暂无评价~
+        </div>
+
+        <!-- 无限滚动的哨兵与状态 -->
+        <div ref="sentinelRef" class="sentinel"></div>
+        <div class="load-more-status">
+          <span v-if="loadingMore">加载更多评价中...</span>
+          <span v-else-if="!hasMore && reviewList.length > 0">已经到底啦 ~</span>
+        </div>
       </div>
     </div>
 
@@ -209,7 +410,12 @@ const buyNow = () => {
         <span v-if="!isLogin" class="placeholder">
           <a @click="router.push('/login')">请登录后查看收货地址</a>
         </span>
-        <span v-else class="placeholder">云南昆明市…（地址管理待做）</span>
+        <span v-else-if="defaultAddress" class="placeholder">
+          {{ defaultAddress.province }}{{ defaultAddress.city }}{{ defaultAddress.district }}（{{ defaultAddress.receiverName }} 收）
+        </span>
+        <span v-else class="placeholder">
+          <a @click="router.push('/user/address')">请添加收货地址</a>
+        </span>
       </div>
 
       <div class="sku-section" v-if="detail.skuList && detail.skuList.length">
@@ -247,7 +453,7 @@ const buyNow = () => {
       </div>
 
       <div class="actions">
-        <button class="btn-cart" @click="addCart">加入购物车</button>
+        <button class="btn-cart" @click="addToCart">加入购物车</button>
         <button class="btn-buy" @click="buyNow">立即购买</button>
       </div>
     </div>
@@ -568,5 +774,95 @@ const buyNow = () => {
 }
 .btn-buy:hover {
   background: #c91e15;
+}
+/* 评价模块样式 */
+.review-content {
+  padding: 0 20px 20px;
+}
+.review-header {
+  border-bottom: 1px solid #eee;
+  padding-bottom: 15px;
+  margin-bottom: 20px;
+}
+.review-header h3 {
+  font-size: 18px;
+  color: #333;
+}
+
+.review-list {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.review-item {
+  border-bottom: 1px dashed #eee;
+  padding-bottom: 20px;
+}
+.review-item:last-child {
+  border-bottom: none;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.user-info .nickname {
+  font-size: 14px;
+  color: #666;
+}
+
+.rating-wrap {
+  margin-bottom: 15px;
+}
+
+.review-text {
+  font-size: 14px;
+  color: #333;
+  line-height: 1.6;
+  margin-bottom: 15px;
+  word-break: break-all;
+}
+
+.review-images {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 15px;
+}
+.review-img {
+  width: 100px;
+  height: 100px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid #f0f0f0;
+}
+
+.review-footer {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #999;
+}
+
+.empty-review {
+  text-align: center;
+  padding: 50px 0;
+  color: #999;
+  font-size: 14px;
+}
+
+/* 无限滚动相关样式 */
+.sentinel {
+  height: 1px;
+  width: 100%;
+}
+.load-more-status {
+  text-align: center;
+  padding: 20px 0;
+  font-size: 13px;
+  color: #999;
 }
 </style>

@@ -10,6 +10,40 @@ const routes: RouteRecordRaw[] = [
         name: 'ProductList',
         component: () => import('@/views/product/list.vue')
     },
+    {
+        path: '/cart',
+        name: 'Cart',
+        component: () => import('@/views/cart/index.vue')
+    },
+    {
+        path: '/order/confirm',
+        name: 'OrderConfirm',
+        component: () => import('@/views/order/confirm.vue'),
+        meta: { requiresAuth: true }
+    },
+    {
+        path: '/order/list',
+        name: 'OrderList',
+        component: () => import('@/views/order/list.vue'),
+        meta: { requiresAuth: true }
+    },
+    {
+        path: '/order/detail/:orderNo',
+        name: 'OrderDetail',
+        component: () => import('@/views/order/detail.vue'),
+        meta: { requiresAuth: true }
+    },
+    {
+        path: '/user/review',
+        name: 'UserReview',
+        component: () => import('@/views/user/review.vue'),
+        meta: { requiresAuth: true }
+    },
+    {
+        path: '/user/address',
+        name: 'UserAddress',
+        component: () => import('@/views/user/address.vue'),
+    },
     { path: '/product/:id', name: 'ProductDetail', component: () => import('@/views/product/detail.vue') }
 ]
 
