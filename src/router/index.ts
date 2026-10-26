@@ -44,7 +44,36 @@ const routes: RouteRecordRaw[] = [
         name: 'UserAddress',
         component: () => import('@/views/user/address.vue'),
     },
-    { path: '/product/:id', name: 'ProductDetail', component: () => import('@/views/product/detail.vue') }
+    { path: '/product/:id', name: 'ProductDetail', component: () => import('@/views/product/detail.vue') },
+    {
+        path: '/user/home',
+        name: 'UserHome',
+        component: () => import('@/views/user/home.vue'),
+        meta: { requiresAuth: true }
+    },
+    {
+        path: '/user/favorite',
+        name: 'UserFavorite',
+        component: () => import('@/views/user/favorite.vue'),
+        meta: { requiresAuth: true }
+    },
+    {
+        path: '/user/history',
+        name: 'UserHistory',
+        component: () => import('@/views/user/history.vue'),
+        meta: { requiresAuth: true }
+    },
+    {
+        path: '/user/coupon',
+        name: 'UserCoupon',
+        component: () => import('@/views/user/coupon.vue'),
+        meta: { requiresAuth: true }
+    },
+    {
+        path: '/seckill',
+        name: 'Seckill',
+        component: () => import('@/views/seckill/index.vue')
+    }
 ]
 
 const router = createRouter({

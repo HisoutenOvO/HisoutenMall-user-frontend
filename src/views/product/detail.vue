@@ -12,8 +12,8 @@ import type { UserReviewVO } from '@/types/review'
 import { getProductReviewPageApi } from '@/api/review'
 import { formatSkuSpecs } from '@/utils/specs'
 import { getAddressListApi } from '@/api/address'
-import type { AddressVO } from '@/types/order'
 import type {AddressListVO} from "@/types/address.ts";
+import {addHistoryApi} from "@/api/history.ts";
 
 const defaultAddress = ref<AddressListVO | null>(null)
 
@@ -151,7 +151,6 @@ const addToCart = async () => {
 
   if (res.code === 1) {
     ElMessage.success('已成功加入购物车')
-    // 3. 核心联动：立刻刷新全局购物车角标数量！
     await cartStore.fetchCartCount()
   } else {
     ElMessage.error(res.msg)
@@ -186,6 +185,10 @@ onMounted(async () => {
 
       loadReviews(false)
 
+      if (isLogin.value) {
+        addHistoryApi(id).catch(() => {})
+      }
+
     } else {
       ElMessage.error(res.msg || '商品不存在或已下架')
       router.replace('/')
@@ -206,22 +209,7 @@ onMounted(async () => {
   }
 })
 
-// 把 specs JSON 转成可读文本
-const formatSpecs = (specs: string): string => {
-  if (!specs) return '默认'
-  try {
-    const obj = JSON.parse(specs)
-    if (typeof obj === 'object' && obj !== null) {
-      return Object.entries(obj)
-          .map(([k, v]) => `${k}: ${v}`)
-          .join('  /  ')
-    }
-    return String(obj)
-  } catch {
-    // 不是 JSON，直接返回原文（兼容商家直接填的 "红色 64G"）
-    return specs
-  }
-}
+
 const changeImage = (img: string) => {
   currentImage.value = img
 }
@@ -431,7 +419,7 @@ onUnmounted(() => {
             }"
               @click="sku.stock > 0 && (selectedSkuId = sku.id)"
           >
-            {{ formatSpecs(sku.specs) }}
+            {{ formatSkuSpecs(sku.specs) }}
           </div>
         </div>
       </div>

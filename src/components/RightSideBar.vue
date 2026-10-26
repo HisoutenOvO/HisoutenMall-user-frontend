@@ -31,7 +31,7 @@ const goTo = (path: string) => {
       <span>购物车</span>
     </div>
 
-    <div class="sidebar-item" @click="goTo('/user')">
+    <div class="sidebar-item" @click="goTo('/user/home')">
       <i class="icon">👤</i>
       <span>我的</span>
     </div>

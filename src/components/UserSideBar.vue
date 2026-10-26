@@ -20,6 +20,12 @@ const menuGroups = [
     ]
   },
   {
+    title: '我的足迹',
+    items: [
+      { name: '浏览历史', path: '/user/history' }
+    ]
+  },
+  {
     title: '账户设置',
     items: [
       { name: '收货地址', path: '/user/address' },

@@ -6,6 +6,7 @@ import CategoryMenu from '@/components/CategoryMenu.vue'
 import GoodsCard from '@/components/GoodsCard.vue'
 import type { UserProductPageResultVO } from '@/types/product'
 import { getUserProductPageApi } from '@/api/product'
+import router from "@/router";
 
 const goodsList = ref<UserProductPageResultVO[]>([])
 const page = ref(1)
@@ -52,13 +53,11 @@ onMounted(async () => {
 
   // 设置哨兵监听
   observer = new IntersectionObserver((entries) => {
-    observer = new IntersectionObserver((entries) => {
-      const entry = entries[0]
-      if (entry && entry.isIntersecting) {
-        loadMore()
-      }
-    }, { rootMargin: '200px' })
-  }, { rootMargin: '200px' })   // 提前 200px 触发，避免用户看到"加载中"卡顿
+    const entry = entries[0]
+    if (entry && entry.isIntersecting) {
+      loadMore()
+    }
+  }, { rootMargin: '200px' })  // 提前 200px 触发，避免用户看到"加载中"卡顿
 
   if (sentinelRef.value) {
     observer.observe(sentinelRef.value)
@@ -96,6 +95,22 @@ onUnmounted(() => {
       <div class="ad ad-2">精致美妆<br />品质之选</div>
       <div class="ad ad-3">超值百货<br />省心省钱</div>
       <div class="ad ad-4">品质五金<br />超值特惠</div>
+    </div>
+  </div>
+
+  <!-- 新增：限时秒杀入口 -->
+  <div class="container">
+    <div class="seckill-banner" @click="router.push('/seckill')">
+      <div class="seckill-left">
+        <span class="flash-icon">⚡</span>
+        <div class="text">
+          <h2>HisoutenMall 秒杀</h2>
+          <p>每日精选好物，限时低价抢购</p>
+        </div>
+      </div>
+      <div class="seckill-right">
+        <span class="go-btn">立即前往 ></span>
+      </div>
     </div>
   </div>
 
@@ -204,5 +219,54 @@ onUnmounted(() => {
 }
 .no-more {
   color: #ccc;
+}
+/* 限时秒杀入口样式 (京东红版) */
+.seckill-banner {
+  margin-top: 20px;
+  background: linear-gradient(90deg, #e1251b 0%, #ff4d4f 100%); /* 京东红渐变 */
+  border-radius: 8px;
+  padding: 20px 30px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  color: #fff;
+  transition: all 0.3s;
+}
+.seckill-banner:hover {
+  box-shadow: 0 8px 20px rgba(225, 37, 27, 0.3);
+  transform: translateY(-2px);
+}
+.seckill-left {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+.flash-icon {
+  font-size: 36px;
+}
+.seckill-left h2 {
+  font-size: 24px;
+  margin: 0 0 5px 0;
+  font-weight: bold;
+  color: #fff;
+}
+.seckill-left p {
+  font-size: 14px;
+  margin: 0;
+  opacity: 0.85;
+  color: #fff;
+}
+.go-btn {
+  background: #fff;
+  color: #e1251b;
+  padding: 10px 25px;
+  border-radius: 20px;
+  font-weight: bold;
+  font-size: 15px;
+  transition: all 0.2s;
+}
+.seckill-banner:hover .go-btn {
+  background: #ffe8e8;
 }
 </style>

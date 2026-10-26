@@ -28,31 +28,32 @@ onMounted(() => {
     <div class="container inner">
       <div class="left">
         <span class="loc">📍 云南</span>
-        <router-link to="/">京东首页</router-link>
+        <router-link to="/">HisoutenMall首页</router-link>
       </div>
       <div class="right">
+        <!-- 登录状态 -->
         <template v-if="userStore.isLogin">
           <span class="welcome">你好，{{ displayName }}</span>
           <span class="divider">|</span>
           <a @click="handleLogout">退出</a>
         </template>
+        <!-- 未登录状态 -->
         <template v-else>
           <router-link to="/login">登录</router-link>
           <span class="split">/</span>
           <router-link to="/register">注册</router-link>
         </template>
+
         <span class="divider">|</span>
         <span class="nav-item" @click="router.push('/order/list')">我的订单</span>
         <span class="divider">|</span>
-        <a>我的京东</a>
+        <span class="nav-item" @click="router.push('/user/home')">我的京东</span>
         <span class="divider">|</span>
-        <a>企业采购</a>
+        <span class="nav-item" @click="router.push('/user/favorite')">我的收藏</span>
         <span class="divider">|</span>
-        <a>客户服务</a>
+        <span class="nav-item" @click="router.push('/user/coupon')">优惠券</span>
         <span class="divider">|</span>
-        <a>网站导航</a>
-        <span class="divider">|</span>
-        <a>手机京东</a>
+        <span class="nav-item" @click="router.push('/cart')">购物车</span>
       </div>
     </div>
   </div>
@@ -103,5 +104,17 @@ onMounted(() => {
 }
 .loc {
   color: #999;
+}
+.right a,
+.left a,
+.nav-item {
+  color: #666;
+  cursor: pointer;
+  text-decoration: none;
+}
+.right a:hover,
+.left a:hover,
+.nav-item:hover {
+  color: #e1251b;
 }
 </style>
