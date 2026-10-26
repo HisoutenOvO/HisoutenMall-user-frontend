@@ -6,7 +6,10 @@ import type { UserFavoritePageResultVO } from '@/types/favorite'
 export const getFavoritePageApi = (params: { page: number, pageSize: number }) =>
     request.get<Result<PageResult<UserFavoritePageResultVO>>>('/user/favorite/page', { params })
 
-// 取消收藏 (注意你后端是 /user/favorite/{productId})
+export const addFavoriteApi = (productId: number) =>
+    request.post<Result>(`/user/favorite/${productId}`)
+
+// 取消收藏
 export const cancelFavoriteApi = (productId: number) =>
     request.delete<Result>(`/user/favorite/${productId}`)
 

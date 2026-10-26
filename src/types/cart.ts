@@ -6,8 +6,7 @@ export interface CartItemVO {
     merchantName: string
     productName: string
     skuSpecs: string
-    mainImage: string
-    skuImage: string
+    image: string
     price: number
     quantity: number
     stock: number

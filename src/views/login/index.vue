@@ -29,16 +29,20 @@ const handleLogin = async () => {
       }
       userStore.setToken(res.data.token)
       await userStore.fetchUserInfo()
+
       // 登录后跳回原页面或首页
       const redirect = (route.query.redirect as string) || '/'
       router.push(redirect)
     } else {
       errorMsg.value = res.msg
     }
+  } catch (e) {
+    errorMsg.value = '登录失败，请检查网络'
   } finally {
     loading.value = false
   }
 }
+
 </script>
 
 <template>

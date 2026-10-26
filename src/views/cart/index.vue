@@ -13,9 +13,15 @@ import {
   deleteCartItemsApi,
   addCartApi
 } from '@/api/cart'
+import { getHistoryPageApi } from '@/api/history'
+import { getFavoritePageApi } from '@/api/favorite'
+import { getOrderPageApi } from '@/api/order'
+import type { UserHistoryPageResultVO } from '@/types/history'
+import type { UserFavoritePageResultVO } from '@/types/favorite'
 import { useCartStore } from '@/stores/cart'
 import { formatSkuSpecs } from '@/utils/specs'
 import { getUserProductDetailApi } from '@/api/product'
+import {addFavoriteApi} from "@/api/favorite.ts";
 
 const router = useRouter()
 const cartStore = useCartStore()
@@ -31,6 +37,61 @@ const loadCart = async () => {
   } finally {
     loading.value = false
   }
+}
+
+// ====== 刚看过/刚收藏/刚买过 悬浮面板逻辑 ======
+const popoverVisible = ref(false)
+const activeHoverTab = ref<'history' | 'favorite' | 'bought'>('history')
+const hoverLoading = ref(false)
+
+// 数据缓存
+const historyList = ref<UserHistoryPageResultVO[]>([])
+const favoriteList = ref<UserFavoritePageResultVO[]>([])
+const boughtList = ref<any[]>([]) // 刚买过直接用订单里的商品项
+
+// 加载数据的方法
+const loadHoverData = async (type: 'history' | 'favorite' | 'bought') => {
+  // 如果已经有数据了就不重复请求
+  if (type === 'history' && historyList.value.length) return
+  if (type === 'favorite' && favoriteList.value.length) return
+  if (type === 'bought' && boughtList.value.length) return
+
+  hoverLoading.value = true
+  try {
+    if (type === 'history') {
+      const res = await getHistoryPageApi({ page: 1, pageSize: 6 })
+      if (res.code === 1) historyList.value = res.data.records
+    } else if (type === 'favorite') {
+      const res = await getFavoritePageApi({ page: 1, pageSize: 6 })
+      if (res.code === 1) favoriteList.value = res.data.records
+    } else if (type === 'bought') {
+      // 刚买过，取已完成或待收货订单里的商品
+      const res = await getOrderPageApi({ page: 1, pageSize: 5 })
+      if (res.code === 1) {
+        const items: any[] = []
+        res.data.records.forEach(order => {
+          // 把订单里的商品提取出来，最多取6个
+          if (order.items) items.push(...order.items)
+        })
+        boughtList.value = items.slice(0, 6)
+      }
+    }
+  } finally {
+    hoverLoading.value = false
+  }
+}
+
+// 鼠标悬浮触发
+const handleMouseEnter = (type: 'history' | 'favorite' | 'bought') => {
+  activeHoverTab.value = type
+  popoverVisible.value = true
+  loadHoverData(type)
+}
+
+// 悬浮框内的 Tab 切换
+const handleTabChange = (tab: any) => {
+  activeHoverTab.value = tab.paneName
+  loadHoverData(tab.paneName)
 }
 
 const groupedCartList = computed(() => {
@@ -115,6 +176,51 @@ const handleDelete = async (ids: number[]) => {
   } catch {}
 }
 
+// 移入收藏
+const moveToFavorite = async (cartItemIds: number[]) => {
+  if (cartItemIds.length === 0) return
+
+  // 1. 增加确认弹框
+  try {
+    await ElMessageBox.confirm(
+        '商品移动后，将不在购物车中展示',
+        '已选商品移入收藏夹？',
+        {
+          confirmButtonText: '确认',
+          cancelButtonText: '取消',
+          type: 'warning',
+          confirmButtonClass: 'el-button--danger' // 让确认按钮变成红色（可选）
+        }
+    )
+  } catch {
+    return // 用户点击了取消
+  }
+
+  // 2. 用户确认后，执行移动逻辑
+  try {
+    loading.value = true
+    // 找出要移动的购物车项
+    const itemsToMove = cartList.value.filter(item => cartItemIds.includes(item.id))
+
+    // 循环调用收藏接口
+    for (const item of itemsToMove) {
+      await addFavoriteApi(item.productId)
+    }
+
+    // 3. 收藏成功后，从购物车里删掉这些项
+    const res = await deleteCartItemsApi(cartItemIds)
+    if (res.code === 1) {
+      ElMessage.success('已移入收藏夹')
+      await loadCart()
+      await cartStore.fetchCartCount()
+    }
+  } catch (e) {
+    ElMessage.error('移入收藏失败')
+  } finally {
+    loading.value = false
+  }
+}
+
 const handleSpecsVisibleChange = async (visible: boolean, item: CartItemVO) => {
   if (visible && !skuOptions.value[item.productId]) {
     const res = await getUserProductDetailApi(item.productId)
@@ -163,15 +269,85 @@ onMounted(() => {
             <span class="font-bold">全选</span>
           </el-checkbox>
           <span class="tool-btn" @click="handleDelete(checkedItems.map(i => i.id))" v-if="checkedItems.length">删除选中</span>
-          <span class="tool-btn">移入收藏</span>
-          <span class="tool-btn">清理购物车</span>
+          <span class="tool-btn" @click="moveToFavorite(checkedItems.map(i => i.id))" v-if="checkedItems.length">移入收藏</span>
         </div>
         <div class="tool-right">
-          <span class="tool-link">🕒 刚看过</span>
-          <span class="divider">|</span>
-          <span class="tool-link">⭐ 刚收藏</span>
-          <span class="divider">|</span>
-          <span class="tool-link">🛍️ 刚买过</span>
+          <el-popover
+              v-model:visible="popoverVisible"
+              placement="bottom-end"
+              :width="400"
+              trigger="hover"
+              :show-arrow="false"
+              popper-class="jd-hover-popover"
+              :popper-options="{
+                modifiers: [
+                  {
+                    name: 'offset',
+                    options: {
+                      offset: [22, 10] // 第一个是横向向右偏移，第二个是纵向向下偏移
+                    }
+                  }
+                ]
+              }"
+          >
+            <!-- 触发区域 -->
+            <template #reference>
+              <div class="hover-links">
+                <span class="tool-link" @mouseenter="handleMouseEnter('history')">
+                  <el-icon><Clock /></el-icon> 刚看过
+                </span>
+                <span class="divider">|</span>
+                <span class="tool-link" @mouseenter="handleMouseEnter('favorite')">
+                  <el-icon><Star /></el-icon> 刚收藏
+                </span>
+                <span class="divider">|</span>
+                <span class="tool-link" @mouseenter="handleMouseEnter('bought')">
+                  <el-icon><ShoppingBag /></el-icon> 刚买过
+                </span>
+              </div>
+            </template>
+
+            <!-- 悬浮面板内容 -->
+            <div class="hover-panel" v-loading="hoverLoading">
+              <el-tabs v-model="activeHoverTab" @tab-change="handleTabChange">
+                <!-- 刚看过 -->
+                <el-tab-pane label="刚看过" name="history">
+                  <div class="mini-goods-grid" v-if="historyList.length">
+                    <div class="mini-goods" v-for="item in historyList" :key="item.id" @click="router.push(`/product/${item.productId}`)">
+                      <img :src="item.mainImage" />
+                      <div class="price">￥{{ item.minPrice }}</div>
+                      <div class="name">{{ item.productName }}</div>
+                    </div>
+                  </div>
+                  <div class="empty-tip" v-else>暂无浏览记录</div>
+                </el-tab-pane>
+
+                <!-- 刚收藏 -->
+                <el-tab-pane label="刚收藏" name="favorite">
+                  <div class="mini-goods-grid" v-if="favoriteList.length">
+                    <div class="mini-goods" v-for="item in favoriteList" :key="item.id" @click="router.push(`/product/${item.productId}`)">
+                      <img :src="item.mainImage" />
+                      <div class="price">￥{{ item.minPrice }}</div>
+                      <div class="name">{{ item.productName }}</div>
+                    </div>
+                  </div>
+                  <div class="empty-tip" v-else>暂无收藏记录</div>
+                </el-tab-pane>
+
+                <!-- 刚买过 -->
+                <el-tab-pane label="刚买过" name="bought">
+                  <div class="mini-goods-grid" v-if="boughtList.length">
+                    <div class="mini-goods" v-for="item in boughtList" :key="item.id" @click="router.push(`/product/${item.productId}`)">
+                      <img :src="item.image" />
+                      <div class="price">￥{{ item.price }}</div>
+                      <div class="name">{{ item.productName }}</div>
+                    </div>
+                  </div>
+                  <div class="empty-tip" v-else>暂无购买记录</div>
+                </el-tab-pane>
+              </el-tabs>
+            </div>
+          </el-popover>
         </div>
       </div>
 
@@ -203,8 +379,7 @@ onMounted(() => {
 
             <!-- 1. 商品名称和图片区域（限制宽度） -->
             <div class="col-goods">
-              <img :src="item.image" alt="商品" class="product-img" @click="router.push(`/product/${item.productId}`)" />
-              <div class="goods-info">
+              <img :src="item.image" alt="商品" class="product-img" @click="router.push(`/product/${item.productId}`)" />              <div class="goods-info">
                 <h4 class="title" @click="router.push(`/product/${item.productId}`)">{{ item.productName }}</h4>
                 <!-- 失效提示放在这里 -->
                 <p class="invalid-reason" v-if="item.invalid">该商品已失效：{{ item.invalidReason }}</p>
@@ -273,7 +448,7 @@ onMounted(() => {
             <!-- 6. 操作 -->
             <div class="col-action">
               <span class="btn-text" @click="handleDelete([item.id])">删除</span>
-              <span class="btn-text mt-2">移入收藏</span>
+              <span class="btn-text mt-2" @click="moveToFavorite([item.id])">移入收藏</span>
             </div>
           </div>
         </div>
@@ -332,7 +507,7 @@ onMounted(() => {
 .tool-btn:hover { color: #e1251b; }
 .tool-right { display: flex; align-items: center; gap: 10px; color: #999; font-size: 13px;}
 .tool-link { cursor: pointer; }
-.tool-link:hover { color: #e1251b; }
+.tool-link:hover { color: #e1251b; display: inline-flex; align-items: center; gap: 3px;}
 .divider { color: #eee; }
 
 /* 分组卡片 */
@@ -423,4 +598,68 @@ onMounted(() => {
 .btn-checkout { width: 120px; height: 50px; background: #e1251b; color: #fff; font-size: 18px; border: none; border-radius: 4px; cursor: pointer; }
 .btn-checkout:hover { background: #c91e15; }
 .btn-checkout.is-disabled { background: #ccc; cursor: not-allowed; }
+/* 悬浮触发文字组 */
+.hover-links {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* 弹窗内部样式 */
+.hover-panel {
+  min-height: 200px;
+}
+.hover-panel :deep(.el-tabs__header) {
+  margin-bottom: 15px;
+}
+.hover-panel :deep(.el-tabs__nav-wrap::after) {
+  height: 1px;
+}
+
+/* 两列商品网格 */
+.mini-goods-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 15px;
+}
+.mini-goods {
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+.mini-goods:hover {
+  transform: translateY(-2px);
+}
+.mini-goods img {
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+.mini-goods .price {
+  color: #e1251b;
+  font-weight: bold;
+  font-size: 16px;
+  margin-top: 5px;
+}
+.mini-goods .name {
+  font-size: 12px;
+  color: #333;
+  margin-top: 2px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.4;
+}
+.mini-goods .name:hover {
+  color: #e1251b;
+}
+
+.empty-tip {
+  text-align: center;
+  color: #999;
+  font-size: 13px;
+  padding: 40px 0;
+}
 </style>

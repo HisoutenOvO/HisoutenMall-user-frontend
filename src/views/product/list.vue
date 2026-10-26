@@ -8,7 +8,6 @@ import type { UserProductPageResultVO, UserProductPageQueryDTO } from '@/types/p
 import { getUserProductPageApi } from '@/api/product'
 
 const route = useRoute()
-const router = useRouter()
 
 const list = ref<UserProductPageResultVO[]>([])
 const page = ref(1)
@@ -22,6 +21,8 @@ let observer: IntersectionObserver | null = null
 // 搜索条件
 const keyword = ref('')
 const categoryId = ref<number | undefined>(undefined)
+// 新增：排序类型（0-综合 1-销量 2-价格升 3-价格降 4-新品）
+const sortType = ref<number>(0)
 
 const reset = () => {
   list.value = []
@@ -38,7 +39,8 @@ const loadMore = async () => {
       page: page.value,
       pageSize,
       keyword: keyword.value || undefined,
-      categoryId: categoryId.value
+      categoryId: categoryId.value,
+      sortType: sortType.value // 把排序参数带上
     }
     const res = await getUserProductPageApi(params)
     if (res.code === 1) {
@@ -53,6 +55,22 @@ const loadMore = async () => {
   } finally {
     loading.value = false
   }
+}
+
+// 新增：点击排序按钮
+const changeSort = async (type: number) => {
+  if (type === 2) {
+    // 价格特殊处理：如果已经是升序(2)点它变降序(3)，否则变升序(2)
+    sortType.value = sortType.value === 2 ? 3 : 2
+  } else {
+    sortType.value = type
+  }
+
+  // 重置分页状态并重新请求
+  reset()
+  await loadMore()
+  // 切换排序后滚回顶部
+  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 // 从 URL query 同步条件，然后重新加载
@@ -71,14 +89,15 @@ onMounted(async () => {
     const entry = entries[0]
     if (entry && entry.isIntersecting) {
       loadMore()
-    }  }, { rootMargin: '200px' })
+    }
+  }, { rootMargin: '200px' })
 
   if (sentinelRef.value) observer.observe(sentinelRef.value)
 })
 
 onUnmounted(() => observer?.disconnect())
 
-// 路由参数变化时重新加载（同一页面切换搜索词/分类）
+// 路由参数变化时重新加载
 watch(() => route.query, () => {
   syncFromQueryAndLoad()
 })
@@ -97,10 +116,34 @@ watch(() => route.query, () => {
         <span class="total-tip" v-if="total">共 {{ total }} 件商品</span>
       </div>
       <div class="result-filters">
-        <span class="filter active">综合</span>
-        <span class="filter">销量</span>
-        <span class="filter">价格</span>
-        <span class="filter">新品</span>
+        <span
+            class="filter"
+            :class="{ active: sortType === 0 }"
+            @click="changeSort(0)"
+        >综合</span>
+
+        <span
+            class="filter"
+            :class="{ active: sortType === 1 }"
+            @click="changeSort(1)"
+        >销量</span>
+
+        <span
+            class="filter"
+            :class="{ active: sortType === 2 || sortType === 3 }"
+            @click="changeSort(2)"
+        >
+          价格
+          <!-- 显示升序降序的小箭头 -->
+          <el-icon v-if="sortType === 2" style="margin-left: 2px; font-size: 12px;"><Top /></el-icon>
+          <el-icon v-else-if="sortType === 3" style="margin-left: 2px; font-size: 12px;"><Bottom /></el-icon>
+        </span>
+
+        <span
+            class="filter"
+            :class="{ active: sortType === 4 }"
+            @click="changeSort(4)"
+        >新品</span>
       </div>
     </div>
 

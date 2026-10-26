@@ -27,7 +27,9 @@ onMounted(() => {
   <div class="top-nav">
     <div class="container inner">
       <div class="left">
-        <span class="loc">📍 云南</span>
+        <span class="loc">
+          <el-icon><LocationInformation /></el-icon> 云南
+        </span>
         <router-link to="/">HisoutenMall首页</router-link>
       </div>
       <div class="right">
@@ -104,6 +106,7 @@ onMounted(() => {
 }
 .loc {
   color: #999;
+  display: flex; align-items: center; gap: 2px;
 }
 .right a,
 .left a,

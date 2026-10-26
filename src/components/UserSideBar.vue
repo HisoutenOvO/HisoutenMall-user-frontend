@@ -10,7 +10,6 @@ const menuGroups = [
     items: [
       { name: '我的订单', path: '/order/list' },
       { name: '评价晒单', path: '/user/review' },
-      { name: '退款/售后', path: '/user/refund' },
     ]
   },
   {

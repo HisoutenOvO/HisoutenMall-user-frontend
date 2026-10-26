@@ -85,6 +85,8 @@ export interface UserOrderPageResultVO {
 
 export interface UserOrderPageQueryDTO extends PageQuery {
     keyword?: string
+    merchantName?: string
+    productName?: string
     status?: number
     source?: number
 }

@@ -1,14 +1,29 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { getCategoryListApi } from '@/api/category'
+import type { CategoryListVO } from '@/types/category'
 
 const router = useRouter()
 const keyword = ref('')
+const hotCategories = ref<CategoryListVO[]>([])
 
 const onSearch = () => {
   if (!keyword.value.trim()) return
   router.push({ path: '/product/list', query: { keyword: keyword.value } })
 }
+
+const goCategory = (id: number) => {
+  router.push({ path: '/product/list', query: { categoryId: id } })
+}
+
+onMounted(async () => {
+  const res = await getCategoryListApi()
+  if (res.code === 1) {
+    // 筛选出一级分类，取前 8 个作为热词展示
+    hotCategories.value = res.data.filter((c: CategoryListVO) => c.level === 1).slice(0, 8)
+  }
+})
 </script>
 
 <template>
@@ -25,10 +40,10 @@ const onSearch = () => {
         </div>
         <div class="hots">
           <a
-              v-for="w in ['手机', '电脑', '耳机', '运动鞋', '连衣裙', '显示器']"
-              :key="w"
-              @click="keyword = w"
-          >{{ w }}</a>
+              v-for="c in hotCategories"
+              :key="c.id"
+              @click="goCategory(c.id)"
+          >{{ c.name }}</a>
         </div>
       </div>
     </div>
@@ -37,7 +52,7 @@ const onSearch = () => {
 
 <style scoped>
 .header {
-  background: #fff;
+  /* 背景交由父级页面控制 */
 }
 .inner {
   position: relative;
@@ -57,11 +72,11 @@ const onSearch = () => {
 .logo-text {
   font-size: 28px;
   font-weight: bold;
-  color: #e1251b;
+  color: #e1251b; /* 恢复京东红 */
 }
 .logo-sub {
   font-size: 18px;
-  color: #e1251b;
+  color: #e1251b; /* 恢复京东红 */
 }
 .search-wrap {
   position: absolute;
@@ -98,11 +113,12 @@ const onSearch = () => {
   margin-top: 8px;
   padding-left: 20px;
   font-size: 12px;
-  color: #999;
+  color: #999; /* 恢复灰色 */
 }
 .hots a {
   cursor: pointer;
   color: #999;
+  transition: color 0.2s;
 }
 .hots a:hover {
   color: #e1251b;

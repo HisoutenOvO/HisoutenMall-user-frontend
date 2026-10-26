@@ -5,7 +5,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadUserFile } from 'element-plus'
 import TopNav from '@/components/TopNav.vue'
 import Header from '@/components/Header.vue'
-import UserSideBar from "@/components/UserSideBar.vue";
+import UserSideBar from "@/components/UserSideBar.vue"
 import {
   getPendingReviewsApi,
   getSelfReviewsApi,
@@ -111,9 +111,7 @@ const handleDelete = async (reviewId: number) => {
     } else {
       ElMessage.error(res.msg)
     }
-  } catch (e) {
-    // 用户取消操作
-  }
+  } catch (e) {}
 }
 
 const handleTabChange = (tab: any) => {
@@ -124,11 +122,13 @@ const handleTabChange = (tab: any) => {
 const handlePendingPage = (val: number) => {
   pendingQuery.value.page = val
   loadPending()
+  window.scrollTo({ top: 300, behavior: 'smooth' })
 }
 
 const handleSelfPage = (val: number) => {
   selfQuery.value.page = val
   loadSelf()
+  window.scrollTo({ top: 300, behavior: 'smooth' })
 }
 
 // 打开评价弹窗
@@ -206,8 +206,10 @@ onMounted(() => {
     <Header />
 
     <div class="container layout-wrapper">
-      <!-- 左侧菜单栏 -->
-      <UserSideBar/>
+      <!-- 左侧固定 -->
+      <div class="sidebar-sticky">
+        <UserSideBar />
+      </div>
 
       <!-- 右侧主内容 -->
       <div class="right-content">
@@ -217,62 +219,56 @@ onMounted(() => {
           </div>
         </div>
 
-        <!-- Tabs -->
+        <!-- Tabs 带动画 -->
         <div class="tabs">
           <div class="tab-item" :class="{ active: activeTab === 'pending' }" @click="activeTab = 'pending'; handleTabChange('pending')">待评价</div>
           <div class="tab-item" :class="{ active: activeTab === 'self' }" @click="activeTab = 'self'; handleTabChange('self')">已评价</div>
+          <div class="tab-line" :style="{ transform: `translateX(${activeTab === 'pending' ? 0 : 100}%)` }"></div>
         </div>
 
         <!-- 待评价列表 -->
-        <div v-show="activeTab === 'pending'" v-loading="loading" class="review-list">
-          <div class="list-item" v-for="item in pendingList" :key="item.orderItemId">
-            <img :src="item.productImage" class="p-img" />
-            <div class="p-info">
-              <h4>{{ item.productName }}</h4>
-              <p>{{ formatSkuSpecs(item.skuSpecs) }}</p>
-              <span class="time">完成时间：{{ item.finishTime?.replace('T', ' ') }}</span>
+        <div v-show="activeTab === 'pending'" v-loading="loading">
+          <transition-group name="list-fade" tag="div" class="review-list">
+            <div class="list-item" v-for="item in pendingList" :key="item.orderItemId">
+              <img :src="item.productImage" class="p-img" />
+              <div class="p-info">
+                <h4>{{ item.productName }}</h4>
+                <p>{{ formatSkuSpecs(item.skuSpecs) }}</p>
+                <span class="time">完成时间：{{ item.finishTime?.replace('T', ' ') }}</span>
+              </div>
+              <div class="action">
+                <button class="btn-review" @click="openReviewDialog(item)">去评价</button>
+              </div>
             </div>
-            <div class="action">
-              <button class="btn-review" @click="openReviewDialog(item)">去评价</button>
-            </div>
-          </div>
+          </transition-group>
           <div class="empty" v-if="pendingList.length === 0 && !loading">暂无待评价商品</div>
-          <el-pagination v-if="pendingTotal > 0" layout="prev, pager, next" :total="pendingTotal" :page-size="pendingQuery.pageSize" :current-page="pendingQuery.page" @current-change="handlePendingPage" class="pager"/>
+          <el-pagination v-if="pendingTotal > 0" background layout="prev, pager, next" :total="pendingTotal" :page-size="pendingQuery.pageSize" :current-page="pendingQuery.page" @current-change="handlePendingPage" class="pagination"/>
         </div>
 
         <!-- 已评价列表 -->
-        <div v-show="activeTab === 'self'" v-loading="loading" class="review-list">
-          <div class="self-card" v-for="item in selfList" :key="item.id">
-            <!-- 头部：星级与时间 -->
-            <div class="review-header">
-              <el-rate
-                  v-model="item.rating"
-                  disabled
-                  :texts="['极差', '失望', '一般', '满意', '惊喜']"
-              />
-              <span class="time">{{ item.createTime?.replace('T', ' ') }}</span>
-            </div>
-
-            <!-- 评价内容 -->
-            <p class="content">{{ item.content || '此用户没有填写评价内容' }}</p>
-
-            <!-- 图片列表 -->
-            <div class="images" v-if="item.images && item.images.length">
-              <img v-for="(img, idx) in item.images" :key="idx" :src="img" />
-            </div>
-
-            <!-- 底部：规格与操作 -->
-            <div class="self-footer">
-              <p class="specs">规格：{{ formatSkuSpecs(item.skuSpecs) }}</p>
-              <div class="action-btns">
-                <button class="btn-detail" @click="openDetailDialog(item.id)">查看详情</button>
-                <span class="divider">|</span>
-                <button class="btn-delete" @click="handleDelete(item.id)">删除</button>
+        <div v-show="activeTab === 'self'" v-loading="loading">
+          <transition-group name="list-fade" tag="div" class="review-list">
+            <div class="self-card" v-for="item in selfList" :key="item.id">
+              <div class="review-header">
+                <el-rate v-model="item.rating" disabled :texts="['极差', '失望', '一般', '满意', '惊喜']" />
+                <span class="time">{{ item.createTime?.replace('T', ' ') }}</span>
+              </div>
+              <p class="content">{{ item.content || '此用户没有填写评价内容' }}</p>
+              <div class="images" v-if="item.images && item.images.length">
+                <img v-for="(img, idx) in item.images" :key="idx" :src="img" />
+              </div>
+              <div class="self-footer">
+                <p class="specs">规格：{{ formatSkuSpecs(item.skuSpecs) }}</p>
+                <div class="action-btns">
+                  <button class="btn-detail" @click="openDetailDialog(item.id)">查看详情</button>
+                  <span class="divider">|</span>
+                  <button class="btn-delete" @click="handleDelete(item.id)">删除</button>
+                </div>
               </div>
             </div>
-          </div>
+          </transition-group>
           <div class="empty" v-if="selfList.length === 0 && !loading">暂无评价记录</div>
-          <el-pagination v-if="selfTotal > 0" layout="prev, pager, next" :total="selfTotal" :page-size="selfQuery.pageSize" :current-page="selfQuery.page" @current-change="handleSelfPage" class="pager"/>
+          <el-pagination v-if="selfTotal > 0" background layout="prev, pager, next" :total="selfTotal" :page-size="selfQuery.pageSize" :current-page="selfQuery.page" @current-change="handleSelfPage" class="pagination"/>
         </div>
       </div>
     </div>
@@ -282,41 +278,20 @@ onMounted(() => {
       <div class="dialog-product">
         <span>商品：{{ reviewForm.productName }}</span>
       </div>
-
       <div class="form-item">
         <label>商品评分：</label>
-        <el-rate
-            v-model="reviewForm.rating"
-            show-text
-            :texts="['极差', '失望', '一般', '满意', '惊喜']"
-            :colors="['#99A9BF', '#F7BA2A', '#FF9900']"
-        />
+        <el-rate v-model="reviewForm.rating" show-text :texts="['极差', '失望', '一般', '满意', '惊喜']" :colors="['#99A9BF', '#F7BA2A', '#FF9900']" />
       </div>
-
       <div class="form-item">
         <label>评价内容：</label>
-        <el-input
-            v-model="reviewForm.content"
-            type="textarea"
-            :rows="4"
-            placeholder="商品满足你的期待吗？说说你的使用心得吧"
-        />
+        <el-input v-model="reviewForm.content" type="textarea" :rows="4" placeholder="商品满足你的期待吗？说说你的使用心得吧" />
       </div>
-
       <div class="form-item">
         <label>上传图片：</label>
-        <el-upload
-            action="#"
-            list-type="picture-card"
-            :http-request="customUpload"
-            :on-remove="handleRemoveImage"
-            :limit="5"
-            :file-list="fileList"
-        >
+        <el-upload action="#" list-type="picture-card" :http-request="customUpload" :on-remove="handleRemoveImage" :limit="5" :file-list="fileList">
           <el-icon><Plus /></el-icon>
         </el-upload>
       </div>
-
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="submitLoading" @click="submitReview">提交评价</el-button>
@@ -326,7 +301,6 @@ onMounted(() => {
     <!-- 评价详情弹窗 -->
     <el-dialog v-model="detailVisible" title="评价详情" width="600px" v-loading="detailLoading">
       <div v-if="reviewDetail" class="detail-wrapper">
-        <!-- 顶部商品信息 -->
         <div class="detail-product">
           <img :src="reviewDetail.productImage" alt="商品" />
           <div class="info">
@@ -335,10 +309,7 @@ onMounted(() => {
             <p class="order-no">订单号：{{ reviewDetail.orderNo }}</p>
           </div>
         </div>
-
         <el-divider />
-
-        <!-- 评价主体内容 -->
         <div class="detail-review">
           <div class="user-info">
             <el-avatar :src="reviewDetail.avatar" :size="40">{{ reviewDetail.nickname?.charAt(0) }}</el-avatar>
@@ -347,27 +318,12 @@ onMounted(() => {
               <span class="time">{{ reviewDetail.createTime?.replace('T', ' ') }}</span>
             </div>
           </div>
-
           <div class="rating-wrap">
-            <el-rate
-                v-model="reviewDetail.rating"
-                disabled
-                :texts="['极差', '失望', '一般', '满意', '惊喜']"
-                show-text
-            />
+            <el-rate v-model="reviewDetail.rating" disabled :texts="['极差', '失望', '一般', '满意', '惊喜']" show-text />
           </div>
-
           <p class="content-text">{{ reviewDetail.content || '此用户没有填写文字评价' }}</p>
-
           <div class="images-list" v-if="reviewDetail.images && reviewDetail.images.length">
-            <el-image
-                v-for="(img, index) in reviewDetail.images"
-                :key="index"
-                :src="img"
-                :preview-src-list="reviewDetail.images"
-                fit="cover"
-                class="detail-img"
-            />
+            <el-image v-for="(img, index) in reviewDetail.images" :key="index" :src="img" :preview-src-list="reviewDetail.images" fit="cover" class="detail-img" />
           </div>
         </div>
       </div>
@@ -378,19 +334,21 @@ onMounted(() => {
 <style scoped>
 /* 基础布局 */
 .review-page { background: #f4f4f4; min-height: 100vh; padding-bottom: 50px; }
-.layout-wrapper { display: flex; gap: 20px; margin-top: 20px; }
+.layout-wrapper { display: flex; gap: 24px; margin-top: 20px; align-items: flex-start; }
 
-/* 右侧内容 */
+.sidebar-sticky { position: sticky; top: 20px; flex-shrink: 0; height: fit-content; }
+
 .right-content { flex: 1; min-width: 0; }
 .header-banner { background: #fff; border-radius: 8px; padding: 20px; margin-bottom: 15px; }
 .header-banner h2 { font-size: 20px; color: #333; }
 
 /* Tabs */
-.tabs { display: flex; background: #fff; border-radius: 8px; margin-bottom: 15px; }
-.tab-item { flex: 1; text-align: center; padding: 15px 0; font-size: 15px; color: #333; cursor: pointer; }
-.tab-item.active { color: #e1251b; font-weight: bold; border-bottom: 2px solid #e1251b; }
+.tabs { display: flex; background: #fff; border-radius: 8px; margin-bottom: 15px; position: relative; border-bottom: 1px solid #eee; }
+.tab-item { flex: 1; text-align: center; padding: 15px 0; font-size: 15px; color: #333; cursor: pointer; transition: color 0.3s; z-index: 2; }
+.tab-item.active { color: #e1251b; font-weight: bold; }
+.tab-line { position: absolute; bottom: 0; left: 0; width: 50%; height: 2px; background: #e1251b; transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1); z-index: 1; }
 
-/* 待评价列表样式 */
+/* 列表 */
 .review-list { display: flex; flex-direction: column; gap: 15px; }
 .list-item { background: #fff; border-radius: 8px; padding: 20px; display: flex; align-items: center; gap: 20px; }
 .p-img { width: 80px; height: 80px; object-fit: cover; border: 1px solid #eee; }
@@ -402,25 +360,14 @@ onMounted(() => {
 .btn-review { background: #fff; border: 1px solid #e1251b; color: #e1251b; padding: 8px 20px; border-radius: 4px; cursor: pointer; transition: all 0.2s; }
 .btn-review:hover { background: #e1251b; color: #fff; }
 
-/* 已评价卡片样式 (单独抽离，撑满全宽) */
-.self-card {
-  background: #fff;
-  border-radius: 8px;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  box-sizing: border-box;
-}
+.self-card { background: #fff; border-radius: 8px; padding: 20px; display: flex; flex-direction: column; width: 100%; box-sizing: border-box; }
 .review-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
 .review-header .time { font-size: 13px; color: #999; }
 .content { font-size: 14px; color: #333; line-height: 1.6; margin-bottom: 15px; }
 
-/* 通用图片列表 */
 .images { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px; }
 .images img { width: 80px; height: 80px; object-fit: cover; border-radius: 4px; cursor: pointer; border: 1px solid #eee; }
 
-/* 已评价底部 */
 .self-footer { display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: 10px; border-top: 1px dashed #eee; padding-top: 15px; }
 .self-footer .specs { font-size: 13px; color: #999; }
 .action-btns { display: flex; align-items: center; gap: 15px; }
@@ -431,14 +378,11 @@ onMounted(() => {
 .btn-delete:hover { color: #e1251b; }
 
 .empty { text-align: center; padding: 60px; background: #fff; border-radius: 8px; color: #999; }
-.pager { margin-top: 20px; justify-content: center; }
 
-/* 弹窗通用样式 */
+/* 弹窗 */
 .dialog-product { background: #f8f8f8; padding: 10px 15px; border-radius: 4px; margin-bottom: 20px; font-size: 14px; color: #333; }
 .form-item { margin-bottom: 20px; display: flex; flex-direction: column; gap: 10px; }
 .form-item label { font-size: 14px; color: #333; font-weight: bold; }
-
-/* 详情弹窗样式 */
 .detail-wrapper { padding: 0 10px; }
 .detail-product { display: flex; gap: 15px; background: #f8f8f8; padding: 15px; border-radius: 6px; }
 .detail-product img { width: 60px; height: 60px; object-fit: cover; border-radius: 4px; }
@@ -454,4 +398,23 @@ onMounted(() => {
 .content-text { font-size: 14px; color: #333; line-height: 1.6; margin-bottom: 15px; white-space: pre-wrap; }
 .images-list { display: flex; gap: 10px; flex-wrap: wrap; }
 .detail-img { width: 80px; height: 80px; border-radius: 4px; cursor: pointer; }
+
+/* 动画与分页美化 */
+.list-fade-enter-active { transition: all 0.4s ease; }
+.list-fade-leave-active { transition: all 0.3s ease; position: absolute; }
+.list-fade-enter-from { opacity: 0; transform: translateY(20px); }
+.list-fade-leave-to { opacity: 0; transform: translateY(-20px); }
+
+.pagination { margin-top: 30px; justify-content: center; }
+.pagination :deep(.el-pagination.is-background .el-pager li),
+.pagination :deep(.el-pagination.is-background .btn-prev),
+.pagination :deep(.el-pagination.is-background .btn-next) {
+  border-radius: 8px; background-color: #f4f4f4; font-weight: 600; color: #666; transition: all 0.3s; margin: 0 4px; min-width: 36px;
+}
+.pagination :deep(.el-pagination.is-background .el-pager li:hover) { color: #e1251b; background-color: #fef5f5; }
+.pagination :deep(.el-pagination.is-background .el-pager li.is-active) {
+  background: linear-gradient(135deg, #e1251b 0%, #c91e15 100%); color: #fff; box-shadow: 0 4px 12px rgba(225, 37, 27, 0.3);
+}
+.pagination :deep(.el-pagination.is-background .btn-prev:disabled),
+.pagination :deep(.el-pagination.is-background .btn-next:disabled) { background-color: #fafafa; color: #ccc; }
 </style>

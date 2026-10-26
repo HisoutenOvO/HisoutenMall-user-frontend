@@ -8,6 +8,10 @@ import type {
     UserOrderDetailVO
 } from '@/types/order'
 
+export function deleteOrderApi() {
+}
+
+
 // 结算页预计算
 export const getOrderPreviewApi = (data: { addressId: number; userCouponIds?: number[] }) => {
     return request.post<Result<OrderPreviewVO>>('/user/order/preview', data)

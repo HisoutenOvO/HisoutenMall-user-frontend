@@ -19,25 +19,25 @@ const goTo = (path: string) => {
 <template>
   <div class="right-sidebar">
     <div class="sidebar-item" @click="goTo('/')">
-      <i class="icon">🏠</i>
+      <el-icon class="icon"><HomeFilled /></el-icon>
       <span>首页</span>
     </div>
 
     <!-- 购物车带角标 -->
     <div class="sidebar-item" @click="goTo('/cart')">
       <el-badge :value="cartStore.cartCount" :hidden="cartStore.cartCount === 0" :max="99" class="cart-badge">
-        <i class="icon">🛒</i>
+        <el-icon class="icon"><ShoppingCart /></el-icon>
       </el-badge>
       <span>购物车</span>
     </div>
 
     <div class="sidebar-item" @click="goTo('/user/home')">
-      <i class="icon">👤</i>
+      <el-icon class="icon"><User /></el-icon>
       <span>我的</span>
     </div>
 
     <div class="sidebar-item" @click="goTo('/user/address')">
-      <i class="icon">🗺️</i>
+      <el-icon class="icon"><Location /></el-icon>
       <span>地址</span>
     </div>
   </div>
@@ -80,13 +80,6 @@ const goTo = (path: string) => {
   color: #e1251b;
   background: #fafafa;
 }
-
-.icon {
-  font-size: 20px;
-  font-style: normal;
-  margin-bottom: 5px;
-}
-
 /* 调整 element-plus badge 的样式，让角标刚好飘在图标右上角 */
 .cart-badge {
   display: flex;
@@ -97,5 +90,13 @@ const goTo = (path: string) => {
   transform: translateY(-5px) translateX(5px);
   background-color: #e1251b;
   border: none;
+}
+.icon {
+  font-size: 20px;
+  margin-bottom: 5px;
+  color: #666; /* 给个默认颜色 */
+}
+.sidebar-item:hover .icon {
+  color: #e1251b; /* 悬浮变红 */
 }
 </style>

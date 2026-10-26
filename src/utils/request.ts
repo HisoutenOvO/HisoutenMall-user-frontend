@@ -1,5 +1,6 @@
 import axios from 'axios'
 import type { AxiosRequestConfig } from 'axios'
+import {ElMessage} from 'element-plus'
 
 const service = axios.create({
     baseURL: '/api',
@@ -19,9 +20,21 @@ service.interceptors.response.use(
     (response) => response.data,
     async (error) => {
         if (error.response?.status === 401 || error.response?.data?.code === 401) {
+            // 1. 清除本地失效的 Token
             localStorage.removeItem('token')
+
+            // 2. 动态引入路由和消息提示
             const { default: router } = await import('@/router')
-            router.push('/login')
+            ElMessage.error('登录已过期，请重新登录')
+
+            // 3. 跳转登录页，并带上当前所在的路径
+            const currentPath = router.currentRoute.value.fullPath
+            if (currentPath !== '/login') {
+                router.push({
+                    path: '/login',
+                    query: { redirect: currentPath }
+                })
+            }
             return Promise.reject(error)
         }
         return Promise.reject(error)

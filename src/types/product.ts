@@ -3,6 +3,7 @@ import type { PageQuery } from './common'
 export interface UserProductPageQueryDTO extends PageQuery {
     keyword?: string
     categoryId?: number
+    sortType?: number // 0-综合(默认) 1-销量 2-价格升序 3-价格降序 4-新品
 }
 
 export interface UserProductPageResultVO {

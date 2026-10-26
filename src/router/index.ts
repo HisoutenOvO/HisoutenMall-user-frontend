@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
+import {useUserStore} from "@/stores/user.ts";
 
 const routes: RouteRecordRaw[] = [
     { path: '/', name: 'Home', component: () => import('@/views/home/index.vue') },
@@ -81,16 +82,30 @@ const router = createRouter({
     routes
 })
 
-// 路由守卫
+// 不需要登录的页面白名单（登录、注册）
+const whiteList = ['/login', '/register']
+
 router.beforeEach(async (to) => {
-    const { useUserStore } = await import('@/stores/user')
     const userStore = useUserStore()
-    // 已登录用户访问登录/注册页 → 跳首页
-    if ((to.path === '/login' || to.path === '/register') && userStore.isLogin) {
+    const isLogin = !!userStore.token
+
+    // 1. 如果已经登录，去登录/注册页，直接跳回首页
+    if (isLogin && whiteList.includes(to.path)) {
         return '/'
     }
-})
 
+    // 2. 如果没登录，且访问的页面不在白名单里 -> 打回登录页
+    if (!isLogin && !whiteList.includes(to.path)) {
+        // 将当前想去的目的地作为参数带上，登录成功后可以直接跳过去
+        return {
+            path: '/login',
+            query: { redirect: to.fullPath }
+        }
+    }
+
+    // 3. 已登录且不是去登录页，放行
+    return true
+})
 
 
 export default router
