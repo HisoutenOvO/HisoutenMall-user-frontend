@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { formatSkuSpecs } from '@/utils/specs'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -14,18 +14,20 @@ import {getAddressListApi, updateOrderAddressApi} from "@/api/address.ts";
 const router = useRouter()
 const loading = ref(false)
 const orderList = ref<UserOrderPageResultVO[]>([])
-const total = ref(0)
 const addressDialogVisible = ref(false)
 const addressList = ref<any[]>([])
 const currentOrderNo = ref('')
-
-// 增加一个状态标记
 const isRecycleBin = ref(false)
+
+// --- 无限滚动状态 ---
+const hasMore = ref(true) // 是否还有下一页
+const sentinelRef = ref<HTMLElement | null>(null) // 底部哨兵
+let observer: IntersectionObserver | null = null
 
 // 修改 searchForm
 const searchForm = ref<UserOrderPageQueryDTO>({
   page: 1,
-  pageSize: 5,
+  pageSize: 10, // 建议改大一点，体验更好
   keyword: '',
   status: undefined,
   source: undefined,
@@ -34,42 +36,63 @@ const searchForm = ref<UserOrderPageQueryDTO>({
   deleted: 0 // 默认查正常的
 })
 
-// 修改加载函数（
-const loadOrders = async () => {
+// 核心加载函数
+const loadOrders = async (isLoadMore = false) => {
+  if (loading.value || (isLoadMore && !hasMore.value)) return
+
   loading.value = true
   try {
-    // 把 deleted 参数一并传给后端
     const res = await getOrderPageApi(searchForm.value)
     if (res.code === 1) {
-      orderList.value = res.data.records || []
-      total.value = res.data.total
+      const records = res.data.records || []
+
+      if (isLoadMore) {
+        // 触底加载，追加数据
+        orderList.value.push(...records)
+      } else {
+        // 首次加载/搜索/切Tab，替换数据
+        orderList.value = records
+      }
+
+      // 如果后端返回的条数少于 pageSize，说明到底了
+      if (records.length < searchForm.value.pageSize) {
+        hasMore.value = false
+      } else {
+        // 还有下一页，页码 +1
+        searchForm.value.page += 1
+      }
+    } else {
+      ElMessage.error(res.msg)
     }
   } finally {
     loading.value = false
   }
 }
 
-const openAddressDialog = async (orderNo: string) => {
-  currentOrderNo.value = orderNo
-  // 调接口查用户的所有地址，展示在弹窗里
-  const res = await getAddressListApi()
-  if (res.code === 1) {
-    addressList.value = res.data
-    addressDialogVisible.value = true
-  }
+// 统一重置加载（用于搜索、切Tab、切回收站）
+const resetAndLoad = () => {
+  searchForm.value.page = 1
+  hasMore.value = true
+  orderList.value = []
+  loadOrders(false)
+  window.scrollTo({ top: 300, behavior: 'smooth' })
 }
 
-// 在弹窗里选中地址并确认
-const confirmAddressChange = async (addressId: number) => {
-  const res = await updateOrderAddressApi(currentOrderNo.value, addressId )
-  if (res.code === 1) {
-    ElMessage.success('地址修改成功')
-    addressDialogVisible.value = false
-    loadOrders() // 刷新订单列表
-  }
+const handleSearch = () => resetAndLoad()
+
+const resetSearch = () => {
+  searchForm.value.keyword = ''
+  searchForm.value.merchantName = ''
+  searchForm.value.productName = ''
+  searchForm.value.source = undefined
+  resetAndLoad()
 }
 
-// 切换回收站
+const changeStatus = (status: number | undefined) => {
+  searchForm.value.status = status
+  resetAndLoad()
+}
+
 const toggleRecycleBin = () => {
   isRecycleBin.value = !isRecycleBin.value
   searchForm.value.deleted = isRecycleBin.value ? 1 : 0
@@ -78,47 +101,54 @@ const toggleRecycleBin = () => {
   searchForm.value.productName = ''
   searchForm.value.status = undefined
   searchForm.value.source = undefined
-  searchForm.value.page = 1
-  loadOrders()
+  resetAndLoad()
 }
 
-// 恢复订单
+// --- 业务操作 ---
+const openAddressDialog = async (orderNo: string) => {
+  currentOrderNo.value = orderNo
+  const res = await getAddressListApi()
+  if (res.code === 1) {
+    addressList.value = res.data
+    addressDialogVisible.value = true
+  }
+}
+
+const confirmAddressChange = async (addressId: number) => {
+  const res = await updateOrderAddressApi(currentOrderNo.value, addressId)
+  if (res.code === 1) {
+    ElMessage.success('地址修改成功')
+    addressDialogVisible.value = false
+    resetAndLoad()
+  }
+}
+
 const handleRestore = async (orderNo: string) => {
   try {
-    await ElMessageBox.confirm('确认恢复该订单到订单列表吗？', '提示', { type: 'info' })
-     const res = await restoreOrderApi(orderNo)
-     if (res.code === 1) {
-       ElMessage.success('订单已恢复')
-       loadOrders()
-      }
-  } catch (e) {}
-}
-
-//删除逻辑
-const handleDelete = async (orderNo: string) => {
-  try {
-    await ElMessageBox.confirm('确认删除该订单吗？删除后可在回收站找回。', '提示', {
-      type: 'warning',
-      confirmButtonText: '确定',
-      cancelButtonText: '取消'
+    await ElMessageBox.confirm('确认恢复该订单到订单列表吗？', '提示', {
+      type: 'info', confirmButtonText: '确定', cancelButtonText: '取消'
     })
-    const res = await deleteOrderApi(orderNo)
+    const res = await restoreOrderApi(orderNo)
     if (res.code === 1) {
-      ElMessage.success('订单已移入回收站')
-      loadOrders()
-    } else {
-      ElMessage.error(res.msg)
+      ElMessage.success('订单已恢复')
+      resetAndLoad()
     }
   } catch (e) {}
 }
 
-const resetSearch = () => {
-  searchForm.value.keyword = ''
-  searchForm.value.merchantName = ''
-  searchForm.value.productName = ''
-  searchForm.value.source = undefined
-  searchForm.value.page = 1
-  loadOrders()
+const handleDelete = async (orderNo: string) => {
+  try {
+    await ElMessageBox.confirm('确认删除该订单吗？删除后可在回收站找回。', '提示', {
+      type: 'warning', confirmButtonText: '确定', cancelButtonText: '取消'
+    })
+    const res = await deleteOrderApi(orderNo)
+    if (res.code === 1) {
+      ElMessage.success('订单已移入回收站')
+      resetAndLoad()
+    } else {
+      ElMessage.error(res.msg)
+    }
+  } catch (e) {}
 }
 
 const statusMap: Record<number, { text: string; class: string }> = {
@@ -130,55 +160,33 @@ const statusMap: Record<number, { text: string; class: string }> = {
   5: { text: '已退款', class: 'text-gray' }
 }
 
-const handleSearch = () => {
-  searchForm.value.page = 1
-  loadOrders()
-}
-
-const changeStatus = (status: number | undefined) => {
-  searchForm.value.status = status
-  searchForm.value.page = 1
-  loadOrders()
-}
-
-const handlePageChange = (page: number) => {
-  searchForm.value.page = page
-  loadOrders()
-  // 平滑滚动回列表顶部
-  window.scrollTo({ top: 300, behavior: 'smooth' })
-}
-
 const handleReceive = async (orderNo: string) => {
   try {
     await ElMessageBox.confirm('请确认已收到商品？', '提示', {
-      type: 'info',
-      confirmButtonText: '确认',
-      cancelButtonText: '取消'
+      type: 'info', confirmButtonText: '确认', cancelButtonText: '取消'
     })
     const res = await receiveOrderApi(orderNo)
     if (res.code === 1) {
       ElMessage.success('确认收货成功')
-      loadOrders()
+      resetAndLoad()
     }
   } catch (e) {}
 }
 
 const goPay = (orderNo: string) => {
   window.open(`/api/pay/alipay?orderNo=${orderNo}`, '_blank')
-  setTimeout(() => loadOrders(), 2000)
+  setTimeout(() => resetAndLoad(), 2000)
 }
 
 const handleCancel = async (orderNo: string) => {
   try {
     await ElMessageBox.confirm('确定要取消该订单吗？', '提示', {
-      type: 'warning',
-      confirmButtonText: '确定',
-      cancelButtonText: '取消'
+      type: 'warning', confirmButtonText: '确定', cancelButtonText: '取消'
     })
     const res = await cancelOrderApi(orderNo)
     if (res.code === 1) {
       ElMessage.success('订单已取消')
-      loadOrders()
+      resetAndLoad()
     } else {
       ElMessage.error(res.msg)
     }
@@ -198,7 +206,23 @@ const buyAgain = async (order: UserOrderPageResultVO) => {
 }
 
 onMounted(() => {
-  loadOrders()
+  resetAndLoad()
+
+  // 设置无限滚动监听
+  observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0]
+        if (entry && entry.isIntersecting) {
+          loadOrders(true) // 触底加载更多
+        }
+      },
+      { rootMargin: '150px' } // 提前 150px 触发
+  )
+  if (sentinelRef.value) observer.observe(sentinelRef.value)
+})
+
+onUnmounted(() => {
+  if (observer) observer.disconnect()
 })
 </script>
 
@@ -208,7 +232,7 @@ onMounted(() => {
     <Header />
 
     <div class="container layout-wrapper">
-      <!-- 左侧菜单：使用 sticky 固定，不随右侧滚动 -->
+      <!-- 左侧菜单：使用 sticky 固定 -->
       <div class="sidebar-sticky">
         <UserSideBar />
       </div>
@@ -241,7 +265,6 @@ onMounted(() => {
             <el-form-item>
               <el-button type="primary" color="#e1251b" @click="handleSearch">查询</el-button>
               <el-button @click="resetSearch">重置</el-button>
-              <!-- 新增：回收站切换按钮 -->
               <el-button
                   :type="isRecycleBin ? 'info' : 'default'"
                   @click="toggleRecycleBin"
@@ -270,7 +293,6 @@ onMounted(() => {
 
         <!-- 订单列表 -->
         <div class="order-list" v-loading="loading">
-          <!-- 改用了纯 opacity 动画，不再导致高度塌陷 -->
           <transition-group name="list-fade" tag="div">
             <div class="order-card" v-for="order in orderList" :key="order.orderNo">
               <!-- 头部 -->
@@ -278,8 +300,9 @@ onMounted(() => {
                 <div class="header-left">
                   <span class="time">{{ order.createTime.replace('T', ' ') }}</span>
                   <span class="order-no">订单号：{{ order.orderNo }}</span>
-                  <span class="merchant-name" style="cursor: pointer;" @click="router.push(`/shop/${order.merchantId}`)">{{ order.merchantName }} <el-icon><ArrowRight /></el-icon>
-                </span>
+                  <span class="merchant-name" style="cursor: pointer;" @click="router.push(`/shop/${order.merchantId}`)">
+                    {{ order.merchantName }} <el-icon><ArrowRight /></el-icon>
+                  </span>
                 </div>
                 <div class="header-right">
                   <span class="status" :class="statusMap[order.status]?.class">
@@ -309,14 +332,13 @@ onMounted(() => {
                 <div class="address-info">
                   <p>寄送至：{{ order.receiverAddress }}</p>
                   <p>收货人：{{ order.receiverName }} {{ order.receiverPhone }}</p>
-                  <!-- 只有待付款和待发货才能显示修改按钮 -->
                   <span
                       v-if="order.status === 0 || order.status === 1"
                       class="edit-address-btn"
                       @click="openAddressDialog(order.orderNo)"
                   >
-    ✎ 修改地址
-  </span>
+                    ✎ 修改地址
+                  </span>
                 </div>
 
                 <!-- 3. 操作区 -->
@@ -326,11 +348,11 @@ onMounted(() => {
                     <div class="price">¥{{ order.payAmount }}</div>
                   </div>
                   <div class="btns">
-                    <!-- 如果在回收站模式下，显示恢复和彻底删除 -->
+                    <!-- 回收站模式 -->
                     <template v-if="isRecycleBin">
                       <el-button type="primary" color="#67c23a" size="small" @click="handleRestore(order.orderNo)">恢复订单</el-button>
                     </template>
-                    <!-- 正常模式下的按钮逻辑 -->
+                    <!-- 正常模式 -->
                     <template v-else>
                       <template v-if="order.status === 0">
                         <el-button type="primary" color="#e1251b" size="small" @click="goPay(order.orderNo)">立即付款</el-button>
@@ -356,16 +378,12 @@ onMounted(() => {
             <el-empty description="暂无相关订单" />
           </div>
 
-          <el-pagination
-              v-if="total > 0"
-              background
-              layout="prev, pager, next"
-              :total="total"
-              :page-size="searchForm.pageSize"
-              :current-page="searchForm.page"
-              @current-change="handlePageChange"
-              class="pagination"
-          />
+          <!-- 无限滚动的哨兵与状态 -->
+          <div ref="sentinelRef" class="sentinel"></div>
+          <div class="load-more-status" v-if="orderList.length > 0">
+            <span v-if="loading">拼命加载中...</span>
+            <span v-else-if="!hasMore">没有更多订单了</span>
+          </div>
         </div>
       </div>
     </div>
@@ -646,7 +664,6 @@ onMounted(() => {
   background: #fff;
   border-radius: 12px;
 }
-
 .recycle-tip {
   background: #fdf6ec;
   color: #e6a23c;
@@ -658,7 +675,6 @@ onMounted(() => {
   gap: 8px;
   font-size: 14px;
 }
-
 .edit-addr-btn {
   color: #e1251b;
   cursor: pointer;
@@ -695,16 +711,15 @@ onMounted(() => {
   margin-top: 5px;
 }
 
-.pagination { margin-top: 30px; justify-content: center; }
-.pagination :deep(.el-pagination.is-background .el-pager li),
-.pagination :deep(.el-pagination.is-background .btn-prev),
-.pagination :deep(.el-pagination.is-background .btn-next) {
-  border-radius: 8px; background-color: #f4f4f4; font-weight: 600; color: #666; transition: all 0.3s; margin: 0 4px; min-width: 36px;
+/* 无限滚动加载状态 */
+.sentinel {
+  height: 1px;
+  width: 100%;
 }
-.pagination :deep(.el-pagination.is-background .el-pager li:hover) { color: #e1251b; background-color: #fef5f5; }
-.pagination :deep(.el-pagination.is-background .el-pager li.is-active) {
-  background: linear-gradient(135deg, #e1251b 0%, #c91e15 100%); color: #fff; box-shadow: 0 4px 12px rgba(225, 37, 27, 0.3);
+.load-more-status {
+  text-align: center;
+  padding: 20px 0 40px;
+  font-size: 14px;
+  color: #999;
 }
-.pagination :deep(.el-pagination.is-background .btn-prev:disabled),
-.pagination :deep(.el-pagination.is-background .btn-next:disabled) { background-color: #fafafa; color: #ccc; }
 </style>
