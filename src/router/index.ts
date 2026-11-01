@@ -71,9 +71,26 @@ const routes: RouteRecordRaw[] = [
         meta: { requiresAuth: true }
     },
     {
+        path: '/shop/:merchantId',
+        name: 'Shop',
+        component: () => import('@/views/shop/index.vue')
+    },
+    {
+        path: '/user/follow-shop',
+        name: 'UserFollowShop',
+        component: () => import('@/views/user/follow-shop.vue'),
+        meta: { requiresAuth: true }
+    },
+    {
         path: '/seckill',
         name: 'Seckill',
         component: () => import('@/views/seckill/index.vue')
+    },
+    {
+        path: '/user/profile',
+        name: 'UserProfile',
+        component: () => import('@/views/user/profile.vue'),
+        meta: { requiresAuth: true }
     }
 ]
 

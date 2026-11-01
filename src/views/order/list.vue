@@ -6,16 +6,23 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import TopNav from '@/components/TopNav.vue'
 import Header from '@/components/Header.vue'
 import type { UserOrderPageQueryDTO, UserOrderPageResultVO } from '@/types/order'
-// 补上了 deleteOrderApi
-import { getOrderPageApi, cancelOrderApi, receiveOrderApi, deleteOrderApi } from '@/api/order'
+import {getOrderPageApi, cancelOrderApi, receiveOrderApi, deleteOrderApi, restoreOrderApi} from '@/api/order'
 import { addCartApi } from "@/api/cart.ts"
 import UserSideBar from "@/components/UserSideBar.vue"
+import {getAddressListApi, updateOrderAddressApi} from "@/api/address.ts";
 
 const router = useRouter()
 const loading = ref(false)
 const orderList = ref<UserOrderPageResultVO[]>([])
 const total = ref(0)
+const addressDialogVisible = ref(false)
+const addressList = ref<any[]>([])
+const currentOrderNo = ref('')
 
+// 增加一个状态标记
+const isRecycleBin = ref(false)
+
+// 修改 searchForm
 const searchForm = ref<UserOrderPageQueryDTO>({
   page: 1,
   pageSize: 5,
@@ -23,8 +30,87 @@ const searchForm = ref<UserOrderPageQueryDTO>({
   status: undefined,
   source: undefined,
   merchantName: '',
-  productName: ''
+  productName: '',
+  deleted: 0 // 默认查正常的
 })
+
+// 修改加载函数（
+const loadOrders = async () => {
+  loading.value = true
+  try {
+    // 把 deleted 参数一并传给后端
+    const res = await getOrderPageApi(searchForm.value)
+    if (res.code === 1) {
+      orderList.value = res.data.records || []
+      total.value = res.data.total
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+const openAddressDialog = async (orderNo: string) => {
+  currentOrderNo.value = orderNo
+  // 调接口查用户的所有地址，展示在弹窗里
+  const res = await getAddressListApi()
+  if (res.code === 1) {
+    addressList.value = res.data
+    addressDialogVisible.value = true
+  }
+}
+
+// 在弹窗里选中地址并确认
+const confirmAddressChange = async (addressId: number) => {
+  const res = await updateOrderAddressApi(currentOrderNo.value, addressId )
+  if (res.code === 1) {
+    ElMessage.success('地址修改成功')
+    addressDialogVisible.value = false
+    loadOrders() // 刷新订单列表
+  }
+}
+
+// 切换回收站
+const toggleRecycleBin = () => {
+  isRecycleBin.value = !isRecycleBin.value
+  searchForm.value.deleted = isRecycleBin.value ? 1 : 0
+  searchForm.value.keyword = ''
+  searchForm.value.merchantName = ''
+  searchForm.value.productName = ''
+  searchForm.value.status = undefined
+  searchForm.value.source = undefined
+  searchForm.value.page = 1
+  loadOrders()
+}
+
+// 恢复订单
+const handleRestore = async (orderNo: string) => {
+  try {
+    await ElMessageBox.confirm('确认恢复该订单到订单列表吗？', '提示', { type: 'info' })
+     const res = await restoreOrderApi(orderNo)
+     if (res.code === 1) {
+       ElMessage.success('订单已恢复')
+       loadOrders()
+      }
+  } catch (e) {}
+}
+
+//删除逻辑
+const handleDelete = async (orderNo: string) => {
+  try {
+    await ElMessageBox.confirm('确认删除该订单吗？删除后可在回收站找回。', '提示', {
+      type: 'warning',
+      confirmButtonText: '确定',
+      cancelButtonText: '取消'
+    })
+    const res = await deleteOrderApi(orderNo)
+    if (res.code === 1) {
+      ElMessage.success('订单已移入回收站')
+      loadOrders()
+    } else {
+      ElMessage.error(res.msg)
+    }
+  } catch (e) {}
+}
 
 const resetSearch = () => {
   searchForm.value.keyword = ''
@@ -42,19 +128,6 @@ const statusMap: Record<number, { text: string; class: string }> = {
   3: { text: '等待收货', class: 'text-blue' },
   4: { text: '已完成', class: 'text-green' },
   5: { text: '已退款', class: 'text-gray' }
-}
-
-const loadOrders = async () => {
-  loading.value = true
-  try {
-    const res = await getOrderPageApi(searchForm.value)
-    if (res.code === 1) {
-      orderList.value = res.data.records || []
-      total.value = res.data.total
-    }
-  } finally {
-    loading.value = false
-  }
 }
 
 const handleSearch = () => {
@@ -110,11 +183,6 @@ const handleCancel = async (orderNo: string) => {
       ElMessage.error(res.msg)
     }
   } catch (e) {}
-}
-
-// 补上了删除逻辑
-const handleDelete = async (orderNo: string) => {
-
 }
 
 const buyAgain = async (order: UserOrderPageResultVO) => {
@@ -173,12 +241,20 @@ onMounted(() => {
             <el-form-item>
               <el-button type="primary" color="#e1251b" @click="handleSearch">查询</el-button>
               <el-button @click="resetSearch">重置</el-button>
+              <!-- 新增：回收站切换按钮 -->
+              <el-button
+                  :type="isRecycleBin ? 'info' : 'default'"
+                  @click="toggleRecycleBin"
+                  style="margin-left: 12px;"
+              >
+                {{ isRecycleBin ? '返回订单列表' : '回收站' }}
+              </el-button>
             </el-form-item>
           </el-form>
         </div>
 
         <!-- 状态 Tabs -->
-        <div class="status-tabs-wrapper">
+        <div class="status-tabs-wrapper" v-show="!isRecycleBin">
           <div class="status-tabs">
             <div class="tab" :class="{ active: searchForm.status === undefined }" @click="changeStatus(undefined)">全部订单</div>
             <div class="tab" :class="{ active: searchForm.status === 0 }" @click="changeStatus(0)">待付款</div>
@@ -187,6 +263,9 @@ onMounted(() => {
             <div class="tab" :class="{ active: searchForm.status === 4 }" @click="changeStatus(4)">已完成</div>
             <div class="tab" :class="{ active: searchForm.status === 2 }" @click="changeStatus(2)">已取消</div>
           </div>
+        </div>
+        <div v-show="isRecycleBin" class="recycle-tip">
+          <el-icon><Delete /></el-icon> 这里是订单回收站，仅展示已删除订单。
         </div>
 
         <!-- 订单列表 -->
@@ -199,9 +278,8 @@ onMounted(() => {
                 <div class="header-left">
                   <span class="time">{{ order.createTime.replace('T', ' ') }}</span>
                   <span class="order-no">订单号：{{ order.orderNo }}</span>
-                  <span class="merchant-name">
-                    <el-icon><Shop /></el-icon> {{ order.merchantName }}
-                  </span>
+                  <span class="merchant-name" style="cursor: pointer;" @click="router.push(`/shop/${order.merchantId}`)">{{ order.merchantName }} <el-icon><ArrowRight /></el-icon>
+                </span>
                 </div>
                 <div class="header-right">
                   <span class="status" :class="statusMap[order.status]?.class">
@@ -229,8 +307,16 @@ onMounted(() => {
 
                 <!-- 2. 收货信息 -->
                 <div class="address-info">
-                  <p><el-icon><User /></el-icon> {{ order.receiverName }} {{ order.receiverPhone }}</p>
-                  <p><el-icon><Location /></el-icon> {{ order.receiverAddress }}</p>
+                  <p>寄送至：{{ order.receiverAddress }}</p>
+                  <p>收货人：{{ order.receiverName }} {{ order.receiverPhone }}</p>
+                  <!-- 只有待付款和待发货才能显示修改按钮 -->
+                  <span
+                      v-if="order.status === 0 || order.status === 1"
+                      class="edit-address-btn"
+                      @click="openAddressDialog(order.orderNo)"
+                  >
+    ✎ 修改地址
+  </span>
                 </div>
 
                 <!-- 3. 操作区 -->
@@ -240,18 +326,25 @@ onMounted(() => {
                     <div class="price">¥{{ order.payAmount }}</div>
                   </div>
                   <div class="btns">
-                    <template v-if="order.status === 0">
-                      <el-button type="primary" color="#e1251b" size="small" @click="goPay(order.orderNo)">立即付款</el-button>
-                      <el-button size="small" @click="handleCancel(order.orderNo)">取消订单</el-button>
+                    <!-- 如果在回收站模式下，显示恢复和彻底删除 -->
+                    <template v-if="isRecycleBin">
+                      <el-button type="primary" color="#67c23a" size="small" @click="handleRestore(order.orderNo)">恢复订单</el-button>
                     </template>
-                    <template v-else-if="order.status === 3">
-                      <el-button type="primary" plain size="small" @click="handleReceive(order.orderNo)">确认收货</el-button>
-                      <el-button size="small">查看物流</el-button>
-                    </template>
+                    <!-- 正常模式下的按钮逻辑 -->
                     <template v-else>
-                      <el-button type="primary" plain size="small" @click="buyAgain(order)">再次购买</el-button>
-                      <el-button size="small" @click="router.push(`/order/detail/${order.orderNo}`)">订单详情</el-button>
-                      <el-button size="small" link type="danger" @click="handleDelete(order.orderNo)">删除订单</el-button>
+                      <template v-if="order.status === 0">
+                        <el-button type="primary" color="#e1251b" size="small" @click="goPay(order.orderNo)">立即付款</el-button>
+                        <el-button size="small" @click="handleCancel(order.orderNo)">取消订单</el-button>
+                      </template>
+                      <template v-else-if="order.status === 3">
+                        <el-button type="primary" plain size="small" @click="handleReceive(order.orderNo)">确认收货</el-button>
+                        <el-button size="small">查看物流</el-button>
+                      </template>
+                      <template v-else>
+                        <el-button type="primary" plain size="small" @click="buyAgain(order)">再次购买</el-button>
+                        <el-button size="small" @click="router.push(`/order/detail/${order.orderNo}`)">订单详情</el-button>
+                        <el-button size="small" link type="danger" @click="handleDelete(order.orderNo)">删除订单</el-button>
+                      </template>
                     </template>
                   </div>
                 </div>
@@ -277,6 +370,22 @@ onMounted(() => {
       </div>
     </div>
   </div>
+
+  <!-- 修改地址弹窗 -->
+  <el-dialog v-model="addressDialogVisible" title="选择收货地址" width="500px">
+    <div class="address-list-wrapper">
+      <div
+          v-for="addr in addressList"
+          :key="addr.id"
+          class="address-item"
+          @click="confirmAddressChange(addr.id)"
+      >
+        <p class="name">{{ addr.receiverName }} <span class="phone">{{ addr.receiverPhone }}</span></p>
+        <p class="detail">{{ addr.province }}{{ addr.city }}{{ addr.district }}{{ addr.detail }}</p>
+      </div>
+      <div v-if="addressList.length === 0" class="empty-tip">暂无地址，请先去个人中心添加</div>
+    </div>
+  </el-dialog>
 </template>
 
 <style scoped>
@@ -531,11 +640,6 @@ onMounted(() => {
   margin-left: 0;
   border-radius: 6px;
 }
-.text-red { color: #e1251b; font-weight: 600; }
-.text-orange { color: #ff9500; }
-.text-gray { color: #999; }
-.text-blue { color: #1677ff; }
-.text-green { color: #67c23a; }
 .empty {
   text-align: center;
   padding: 80px 0;
@@ -543,14 +647,52 @@ onMounted(() => {
   border-radius: 12px;
 }
 
-/* 修复闪烁：只做透明度变化，不再改变高度 */
-.list-fade-enter-active,
-.list-fade-leave-active {
-  transition: opacity 0.3s ease;
+.recycle-tip {
+  background: #fdf6ec;
+  color: #e6a23c;
+  padding: 15px 20px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
 }
-.list-fade-enter-from,
-.list-fade-leave-to {
-  opacity: 0;
+
+.edit-addr-btn {
+  color: #e1251b;
+  cursor: pointer;
+  font-size: 12px;
+  margin-top: 5px;
+  display: inline-block;
+}
+.edit-addr-btn:hover {
+  text-decoration: underline;
+}
+.address-item {
+  border: 1px solid #eee;
+  padding: 10px;
+  margin-bottom: 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.address-item:hover {
+  border-color: #e1251b;
+  background: #fef5f5;
+}
+.address-item .name {
+  font-weight: bold;
+  font-size: 14px;
+}
+.address-item .phone {
+  color: #999;
+  margin-left: 10px;
+  font-weight: normal;
+}
+.address-item .detail {
+  font-size: 13px;
+  color: #666;
+  margin-top: 5px;
 }
 
 .pagination { margin-top: 30px; justify-content: center; }

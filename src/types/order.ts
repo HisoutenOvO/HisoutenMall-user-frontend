@@ -89,6 +89,7 @@ export interface UserOrderPageQueryDTO extends PageQuery {
     productName?: string
     status?: number
     source?: number
+    deleted?: number
 }
 export interface OrderCouponVO {
     couponName: string

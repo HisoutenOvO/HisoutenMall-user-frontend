@@ -20,12 +20,14 @@ const goDetail = () => {
         <span class="symbol">￥</span>
         <span class="num">{{ item.minPrice }}</span>
       </div>
-      <div class="name">{{ item.name }}</div>
+      <div class="name" v-html="item.name"></div>
       <div class="tags">
         <span class="tag">分期免息</span>
         <span class="tag">包邮</span>
       </div>
-      <div class="merchant">{{ item.merchantName }}</div>
+      <div class="merchant" @click.stop="router.push(`/shop/${item.merchantId}`)">
+        {{ item.merchantName }}
+      </div>
     </div>
   </div>
 </template>

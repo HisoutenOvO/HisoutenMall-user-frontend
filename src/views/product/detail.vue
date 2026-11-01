@@ -47,6 +47,55 @@ const hasMore = ref(true)
 const sentinelRef = ref<HTMLElement | null>(null)
 let observer: IntersectionObserver | null = null
 
+import {checkFollowShopApi, followShopApi, unfollowShopApi} from '@/api/shop'
+
+// 店铺关注状态
+const isShopFollowed = ref(false)
+
+// 检查是否已关注该店铺
+const checkShopFollowStatus = async () => {
+  if (!localStorage.getItem('token') || !detail.value) return
+  try {
+    const res = await checkFollowShopApi(detail.value.merchantId)
+    if (res.code === 1) {
+      isShopFollowed.value = res.data
+    }
+  } catch (e) {
+    console.error('查询关注状态失败')
+  }
+}
+
+// 关注/取消关注店铺
+const toggleFollowShop = async () => {
+  if (!localStorage.getItem('token')) {
+    ElMessage.warning('请先登录')
+    router.push('/login')
+    return
+  }
+  if (!detail.value) return
+
+  try {
+    if (isShopFollowed.value) {
+      await unfollowShopApi(detail.value.merchantId)
+      isShopFollowed.value = false
+      ElMessage.success('已取消关注')
+    } else {
+      await followShopApi(detail.value.merchantId)
+      isShopFollowed.value = true
+      ElMessage.success('关注店铺成功')
+    }
+  } catch (e) {
+    ElMessage.error('操作失败')
+  }
+}
+
+// 跳转店铺主页
+const goToShop = () => {
+  if (detail.value) {
+    router.push(`/shop/${detail.value.merchantId}`)
+  }
+}
+
 const loadReviews = async (isLoadMore = false) => {
   if (!detail.value) return
   if (isLoadMore && (!hasMore.value || loadingMore.value)) return
@@ -193,6 +242,7 @@ onMounted(async () => {
       const found = addressRes.data.find((a: AddressListVO) => a.isDefault === 1)
       selectedAddress.value = found || addressRes.data[0] || null
     }
+    await checkShopFollowStatus()
   }
 })
 
@@ -325,18 +375,27 @@ onUnmounted(() => {
 
       <!-- 店铺信息 -->
       <div class="shop-info">
-        <div class="shop-left">
+        <!-- 点击左侧文字区域跳转店铺 -->
+        <div class="shop-left" @click="goToShop">
           <div class="shop-logo">
             <el-icon><Shop /></el-icon>
           </div>
           <div class="shop-text">
-            <div class="shop-name">{{ detail.merchantName }}</div>
+            <div class="shop-name">{{ detail.merchantName }} <el-icon><ArrowRight /></el-icon></div>
             <div class="shop-desc">精选店铺好物，快来逛逛</div>
           </div>
         </div>
-        <div class="shop-actions">
-          <el-button round size="small">
-            <el-icon><Plus /></el-icon>关注店铺
+
+        <!-- 按钮区域阻止冒泡 -->
+        <div class="shop-actions" @click.stop>
+          <el-button
+              round
+              size="small"
+              :type="isShopFollowed ? 'info' : 'danger'"
+              plain
+              @click="toggleFollowShop"
+          >
+            <el-icon><Plus /></el-icon>{{ isShopFollowed ? '已关注' : '关注店铺' }}
           </el-button>
           <el-button round size="small">
             <el-icon><Service /></el-icon>联系客服
@@ -642,37 +701,49 @@ onUnmounted(() => {
 }
 
 .shop-info {
+  margin-top: 15px;
   background: #fff;
   padding: 20px;
-  border-radius: 12px;
+  border-radius: 8px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.04);
 }
 .shop-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 15px;
+  cursor: pointer;
+}
+.shop-left:hover .shop-name {
+  color: #e1251b;
 }
 .shop-logo {
-  width: 48px;
-  height: 48px;
-  background: #fef5f5;
-  color: #e1251b;
+  width: 50px;
+  height: 50px;
+  background: #f4f4f4;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 24px;
+  color: #999;
 }
 .shop-text .shop-name {
   font-size: 16px;
   font-weight: bold;
   color: #333;
-  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: color 0.2s;
+}
+.shop-text .shop-name .el-icon {
+  font-size: 12px;
+  color: #999;
 }
 .shop-text .shop-desc {
+  margin-top: 5px;
   font-size: 13px;
   color: #999;
 }

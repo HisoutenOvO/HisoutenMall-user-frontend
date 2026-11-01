@@ -21,12 +21,14 @@ const menuGroups = [
   {
     title: '我的足迹',
     items: [
-      { name: '浏览历史', path: '/user/history' }
+      { name: '浏览历史', path: '/user/history' },
+      { name: '关注店铺', path: '/user/follow-shop' }
     ]
   },
   {
     title: '账户设置',
     items: [
+      { name: '个人资料', path: '/user/profile' },
       { name: '收货地址', path: '/user/address' },
     ]
   }

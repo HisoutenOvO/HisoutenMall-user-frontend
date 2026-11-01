@@ -165,7 +165,12 @@ onMounted(() => {
 
         <!-- 4. 商品清单 -->
         <div class="info-card">
-          <div class="card-title">商品清单 <span class="merchant">店铺：{{ detail.merchantName }}</span></div>
+          <div class="card-title">
+            商品清单
+            <span class="merchant" style="cursor: pointer;" @click="router.push(`/shop/${detail.merchantId}`)">
+    店铺：{{ detail.merchantName }} <el-icon><ArrowRight /></el-icon>
+  </span>
+          </div>
 
           <div class="goods-table">
             <div class="table-header">

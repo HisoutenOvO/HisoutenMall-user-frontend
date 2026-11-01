@@ -25,3 +25,7 @@ export const setDefaultAddressApi = (id: number) =>
 // 删除
 export const deleteAddressApi = (id: number) =>
     request.delete<Result>(`/user/address/${id}`)
+
+//修改订单地址接口
+export const updateOrderAddressApi = (orderNo: string, addressId: number) =>
+    request.put<Result>(`/user/order/${orderNo}/address?addressId=${addressId}`)

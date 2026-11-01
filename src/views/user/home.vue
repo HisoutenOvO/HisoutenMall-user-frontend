@@ -14,6 +14,7 @@ import UserSideBar from "@/components/UserSideBar.vue"
 import { getMyCouponPageApi } from "@/api/coupon"
 import { getHistoryPageApi } from "@/api/history"
 import type { UserHistoryPageResultVO } from "@/types/history"
+import { getFollowShopPageApi } from '@/api/shop'
 
 const router = useRouter()
 const loading = ref(true)
@@ -21,14 +22,16 @@ const userInfo = ref<UserDetailVO | null>(null)
 const favoriteList = ref<UserFavoritePageResultVO[]>([])
 const historyList = ref<UserHistoryPageResultVO[]>([])
 const stats = ref({ pendingPayment: 0, pendingReceive: 0, pendingReview: 0, couponCount: 0 })
+const followShopList = ref<any[]>([]) // 关注店铺列表
 
 const loadDashboardData = async () => {
   loading.value = true
   try {
-    const [profileRes, favRes, historyRes, orderPayRes, orderReceiveRes, reviewRes, couponRes] = await Promise.all([
+    const [profileRes, favRes, historyRes, orderPayRes, orderReceiveRes, reviewRes, couponRes,followRes] = await Promise.all([
       getUserProfileApi(), getFavoritePageApi({ page: 1, pageSize: 4 }), getHistoryPageApi({ page: 1, pageSize: 4 }),
       getOrderPageApi({ page: 1, pageSize: 1, status: 0 }), getOrderPageApi({ page: 1, pageSize: 1, status: 3 }),
-      getPendingReviewsApi({ page: 1, pageSize: 1 }), getMyCouponPageApi({ page: 1, pageSize: 1, status: 0 })
+      getPendingReviewsApi({ page: 1, pageSize: 1 }), getMyCouponPageApi({ page: 1, pageSize: 1, status: 0 }),
+      getFollowShopPageApi({ page: 1, pageSize: 4 })
     ])
     if (profileRes.code === 1) userInfo.value = profileRes.data
     if (favRes.code === 1) favoriteList.value = favRes.data.records || []
@@ -37,6 +40,7 @@ const loadDashboardData = async () => {
     if (orderReceiveRes.code === 1) stats.value.pendingReceive = orderReceiveRes.data.total
     if (reviewRes.code === 1) stats.value.pendingReview = reviewRes.data.total
     if (couponRes.code === 1) stats.value.couponCount = couponRes.data.total
+    if (followRes.code === 1) followShopList.value = followRes.data.records || []
   } catch (e) { ElMessage.error('加载数据失败') } finally { loading.value = false }
 }
 
@@ -110,9 +114,26 @@ onMounted(() => loadDashboardData())
               <div class="empty-fav" v-if="historyList.length === 0">暂无足迹</div>
             </div>
           </div>
+          <!-- 关注店铺 -->
           <div class="col-card">
-            <div class="col-header"><h3>关注店铺</h3><span class="more">查看更多 ></span></div>
-            <div class="empty-state">功能暂时关闭</div>
+            <div class="col-header">
+              <h3>关注店铺</h3>
+              <span class="more" @click="router.push('/user/follow-shop')">查看更多 ></span>
+            </div>
+            <div class="fav-grid">
+              <div
+                  class="fav-item shop-fav-item"
+                  v-for="item in followShopList"
+                  :key="item.merchantId"
+                  @click="router.push(`/shop/${item.merchantId}`)"
+              >
+                <div class="shop-img-box">
+                  <img :src="item.shopLogo || 'https://via.placeholder.com/100'" alt="店铺Logo" />
+                </div>
+                <p class="name shop-name" :title="item.shopName">{{ item.shopName }}</p>
+              </div>
+              <div class="empty-fav" v-if="followShopList.length === 0">暂无关注店铺</div>
+            </div>
           </div>
         </div>
       </div>
@@ -150,4 +171,57 @@ onMounted(() => loadDashboardData())
 .fav-item .name { font-size: 12px; color: #333; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fav-item .price { font-size: 14px; color: #e1251b; font-weight: bold; margin-top: 3px; }
 .empty-fav, .empty-state { display: flex; justify-content: center; align-items: center; height: 100px; color: #999; font-size: 13px; }
+/* 关注店铺特定样式 */
+.shop-fav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: hidden;
+}
+
+/* 店铺Logo的底座撑满 */
+.shop-img-box {
+  width: 100%;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f8f8f8;
+  border-radius: 6px;
+  border: 1px solid #f0f0f0;
+  transition: all 0.2s;
+  padding: 10px; /* 加点内边距，不至于太贴边 */
+}
+
+.shop-fav-item:hover .shop-img-box {
+  border-color: #fce4e4;
+  background: #fef5f5;
+}
+
+/* 核心修复：让图片填满整个盒子的高度，看起来更饱满 */
+.shop-img-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain; /* contain保证Logo完整，如果图片比例接近正方形，看起来就刚刚好 */
+  border-radius: 4px;
+  border: none;
+}
+
+/* 店铺名称 */
+.shop-name {
+  width: 100%;
+  font-size: 13px;
+  font-weight: bold;
+  color: #333;
+  margin-top: 8px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.2s;
+}
+
+.shop-fav-item:hover .shop-name {
+  color: #e1251b;
+}
 </style>

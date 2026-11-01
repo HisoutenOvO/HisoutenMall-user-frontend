@@ -8,10 +8,6 @@ import type {
     UserOrderDetailVO
 } from '@/types/order'
 
-export function deleteOrderApi() {
-}
-
-
 // 结算页预计算
 export const getOrderPreviewApi = (data: { addressId: number; userCouponIds?: number[] }) => {
     return request.post<Result<OrderPreviewVO>>('/user/order/preview', data)
@@ -46,3 +42,11 @@ export const getOrderDetailApi = (orderNo: string) =>
 // 确认收货
 export const receiveOrderApi = (orderNo: string) =>
     request.put<Result>(`/user/order/${orderNo}/receive`)
+
+//删除订单
+export const deleteOrderApi = (orderNo: string) =>
+    request.delete<Result>(`/user/order/${orderNo}`)
+
+// 恢复订单
+export const restoreOrderApi = (orderNo: string) =>
+    request.put<Result>(`/user/order/${orderNo}/restore`)
